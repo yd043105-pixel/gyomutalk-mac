@@ -42,9 +42,9 @@ public sealed class MessengerApi : IDisposable
         configuration.URLCredentialStorage=null;
         configuration.TimeoutIntervalForRequest=90;
         configuration.TimeoutIntervalForResource=90;
-        var handler=new System.Net.Http.NSUrlSessionHandler(configuration){CookieContainer=cookies,AllowAutoRedirect=false,DisableCaching=true};
+        var handler=new System.Net.Http.NSUrlSessionHandler(configuration){CookieContainer=cookies,AllowAutoRedirect=false,DisableCaching=true,ServerCertificateCustomValidationCallback=CertificatePins.Callback(uri)};
 #else
-        var handler=new HttpClientHandler{CookieContainer=cookies,AllowAutoRedirect=false};
+        var handler=new HttpClientHandler{CookieContainer=cookies,AllowAutoRedirect=false,ServerCertificateCustomValidationCallback=CertificatePins.Callback(uri)};
 #endif
         http=new HttpClient(handler){BaseAddress=uri,Timeout=TimeSpan.FromSeconds(90)};
         http.DefaultRequestHeaders.Add("X-YY-Product",ProductCode);

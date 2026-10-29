@@ -17,7 +17,11 @@ public sealed partial class MessengerPage
         if(desktopOwner==source&&desktopHub is not null)return;
         StopDesktopPresence();desktopOwner=source;
         var hub=new HubConnectionBuilder().WithUrl(new Uri(source.Address,"hub"),options=>
-        {options.Cookies=source.SessionCookies;options.HttpMessageHandlerFactory=handler=>{if(handler is HttpClientHandler client)client.AllowAutoRedirect=false;return handler;};}).WithAutomaticReconnect().Build();
+        {
+            options.Cookies=source.SessionCookies;
+            options.HttpMessageHandlerFactory=handler=>{if(handler is HttpClientHandler client){client.AllowAutoRedirect=false;client.ServerCertificateCustomValidationCallback=CertificatePins.Callback(source.Address);}return handler;};
+            options.WebSocketConfiguration=socket=>socket.RemoteCertificateValidationCallback=(_,certificate,_,errors)=>CertificatePins.Validate(source.Address,certificate,errors);
+        }).WithAutomaticReconnect().Build();
         desktopHub=hub;
         hub.On<JsonElement>("NewMessage",_=>MainThread.BeginInvokeOnMainThread(()=>{if(desktopOwner==source)desktopStatus.Text="새 메시지가 도착했습니다";}));
         hub.Reconnecting+=_=>{MainThread.BeginInvokeOnMainThread(()=>desktopStatus.Text="다시 연결 중");return Task.CompletedTask;};

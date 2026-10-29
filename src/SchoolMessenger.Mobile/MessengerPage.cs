@@ -50,14 +50,14 @@ public sealed partial class MessengerPage : ContentPage
         if(!restored&&api is null)
         {
             restored=true;var mode=Preferences.Default.Get("mode",0);var address=Preferences.Default.Get("address-"+mode,"");
-            if(address.Length>0)await Run(async()=>
+            if(address.Length>0)await Run(()=>ConfirmingCertificate(address,async()=>
             {
-                var school=ReadSelectedSchool(mode);if(school is not null)await SchoolMessenger.Shared.SchoolDirectory.Verify(school,mode==1?"office":"announcements");
+                var school=ReadSelectedSchool(mode);if(school is not null)await SchoolMessenger.Shared.SchoolDirectory.Verify(school,mode==1?"office":"announcements",default,CertificatePins.Handler(address));
                 var source=new MessengerApi(address,mode==1);await source.Restore();
                 if(!source.Remember){source.Dispose();return;}
                 api=source;source.Invalidated+=()=>{if(api==source)Invalidate();};await source.Refresh();
                 if(source.Session.GetProperty("user").ValueKind!=JsonValueKind.Null)await Home();
-            });
+            }));
             return;
         }
         if(api is {Session.ValueKind:JsonValueKind.Object} source&&source.Session.GetProperty("user").ValueKind!=JsonValueKind.Null&&!covered)

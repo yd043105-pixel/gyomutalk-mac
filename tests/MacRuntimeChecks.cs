@@ -1,5 +1,8 @@
 #if MAC_VERIFY && DEBUG
 using System.Globalization;
+using System.Net.Security;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -36,6 +39,30 @@ internal static class MacRuntimeChecks
     }
     static void Check(bool value,string description){if(!value)throw new InvalidOperationException(description);passed.Add(description);Console.WriteLine("MAC_PROGRESS:"+description);}
     static StringContent Json(JsonObject value)=>new(value.ToJsonString(),Encoding.UTF8,"application/json");
+    static X509Certificate2 SelfIssued()
+    {
+        using var key=ECDsa.Create(ECCurve.NamedCurves.nistP256);var request=new CertificateRequest("CN=pin-check.invalid",key,HashAlgorithmName.SHA256);
+        return request.Create(request.SubjectName,X509SignatureGenerator.CreateForECDsa(key),DateTimeOffset.UtcNow.AddMinutes(-1),DateTimeOffset.UtcNow.AddYears(10),RandomNumberGenerator.GetBytes(8));
+    }
+    // The verification server speaks Development HTTP, so the pin rule is checked with invented self-issued certificates.
+    static void CertificatePinChecks()
+    {
+        const string school="https://pin-check.invalid:18443/",elsewhere="https://pin-check.invalid:18444/";
+        CertificatePins.Forget(school);CertificatePins.Forget(elsewhere);
+        using var issued=SelfIssued();using var replaced=SelfIssued();var print=CertificatePins.Fingerprint(issued);var chain=SslPolicyErrors.RemoteCertificateChainErrors;
+        try
+        {
+            Check(CertificatePins.Validate(new Uri(school),null,SslPolicyErrors.None),"Certificates the operating system already trusts are accepted without a connection code");
+            Check(!CertificatePins.Validate(new Uri(school),issued,chain)&&CertificatePins.Pending(school)==print,"Unconfirmed self-issued school certificate is refused and held for the connection code");
+            var code=CertificatePins.Code(print);
+            Check(code.Length==19&&code.Split('-').All(part=>part.Length==4&&part.All(Uri.IsHexDigit))&&print.StartsWith(code.Replace("-",""),StringComparison.Ordinal),"Connection code is the first 16 hex digits of the SHA-256 fingerprint in groups of four");
+            CertificatePins.Trust(school,print);
+            Check(CertificatePins.Validate(new Uri(school),issued,chain)&&CertificatePins.Pending(school) is null,"Confirmed school certificate is accepted afterwards");
+            Check(!CertificatePins.Validate(new Uri(school),replaced,chain)&&CertificatePins.Pending(school) is null,"A different certificate at a confirmed school address is always refused without asking again");
+            Check(!CertificatePins.Validate(new Uri(elsewhere),issued,chain),"A confirmed certificate is trusted only at the address it was confirmed for");
+        }
+        finally{CertificatePins.Forget(school);CertificatePins.Forget(elsewhere);}
+    }
     static async Task Wait(Func<bool> condition){for(var i=0;i<600;i++){if(condition())return;await Task.Delay(100);}throw new InvalidOperationException("Mac native UI timeout");}
     static async Task Capture(string name)
     {
@@ -58,6 +85,7 @@ internal static class MacRuntimeChecks
             Check(AppInfo.Current.Name=="교무톡"&&AppInfo.Current.VersionString==typeof(App).Assembly.GetName().Version!.ToString(3),"Mac brand and configured release version");
             Check(Page.Content is Grid grid&&grid.ColumnDefinitions.Count==2,"Native desktop sidebar and separate content column");await Capture("mac-login.png");
             Check(Views(Page.Content).OfType<Button>().Where(b=>!string.IsNullOrEmpty(b.Text)).All(b=>b.Handler?.PlatformView is UIButton native&&!string.IsNullOrEmpty(native.CurrentTitle??native.Configuration?.Title)),"Native Mac buttons retain their visible title bindings");
+            CertificatePinChecks();
             await Page.MacVerifyLogin(fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost"),fixture.GetProperty("password").GetString()!);
             Check(Page.MacVerifyApi.ProductCode=="teacher-macos"&&!Page.MacVerifyApi.Remember,"Mac product identity and session kept in memory for ad-hoc verification");
             await Wait(()=>Page.MacVerifyConnected);

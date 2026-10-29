@@ -14,6 +14,18 @@ public sealed partial class MessengerPage
     {
         Preferences.Default.Set("school-id-"+mode,school?.Id??"");Preferences.Default.Set("school-name-"+mode,school?.Name??"");Preferences.Default.Set("school-region-"+mode,school?.Region??"");
     }
+    const string CertificateRefused="연결 확인 코드가 달라 접속하지 않았습니다. 학교 관리자에게 알려 주세요.";
+    // A school server from the administrator's simple setup has its own certificate. On the first connection the person
+    // compares the connection code with the one shown on the server PC; once confirmed, the action is retried.
+    async Task ConfirmingCertificate(string address,Func<Task> action)
+    {
+        try{await action();return;}
+        catch(Exception)when(CertificatePins.Pending(address) is not null){}
+        var fingerprint=CertificatePins.Pending(address)!;var owner=Navigation.NavigationStack.LastOrDefault()??this;
+        if(!await owner.DisplayAlertAsync("학교 서버 확인","이 학교 서버에 처음 연결합니다.\n\n연결 확인 코드: "+CertificatePins.Code(fingerprint)+"\n\n서버 PC의 관리자 프로그램(또는 학교 관리자 안내)에 표시된 코드와 똑같을 때만 '예'를 누르세요. 다르면 '아니요'를 누르고 관리자에게 알려 주세요.","예","아니요"))
+            throw new InvalidOperationException(CertificateRefused);
+        CertificatePins.Trust(address,fingerprint);await action();
+    }
     async Task<SchoolDirectory.Entry?> ChooseSchool(string service)
     {
         using var stop=new CancellationTokenSource();var result=new TaskCompletionSource<SchoolDirectory.Entry?>();
@@ -28,8 +40,9 @@ public sealed partial class MessengerPage
         {
             if(!query.IsEnabled||list.SelectedItem is not SchoolDirectory.Entry school)return;
             use.IsEnabled=list.IsEnabled=query.IsEnabled=false;
-            try{status.Text="학교 연결 확인 중…";await SchoolDirectory.Verify(school,service,stop.Token);result.TrySetResult(school);}
+            try{status.Text="학교 연결 확인 중…";var address=school.Address(service);await ConfirmingCertificate(address,()=>SchoolDirectory.Verify(school,service,stop.Token,CertificatePins.Handler(address)));result.TrySetResult(school);}
             catch(OperationCanceledException)when(stop.IsCancellationRequested){}
+            catch(InvalidOperationException e)when(e.Message==CertificateRefused){status.Text=e.Message;}
             catch{status.Text="학교에 연결하지 못했거나 등록 정보가 다릅니다. 교내망/VPN 연결과 학교 서버 가동 여부를 확인하세요.";}
             finally{list.IsEnabled=query.IsEnabled=true;use.IsEnabled=list.SelectedItem is SchoolDirectory.Entry;}
         };use.IsEnabled=false;list.SelectionChanged+=(_,_)=>use.IsEnabled=query.IsEnabled&&list.SelectedItem is SchoolDirectory.Entry;
