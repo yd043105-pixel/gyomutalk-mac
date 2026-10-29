@@ -26,6 +26,7 @@
     <MauiFont Include="../SchoolMessenger.Mobile/Resources/Fonts/*.ttf" Link="Resources/Fonts/%(Filename)%(Extension)" />
     <MauiAsset Include="../../LICENSE;../../THIRD-PARTY-NOTICES.md;../SchoolMessenger.Mobile/Resources/Fonts/LICENSE-OpenSans.txt;../SchoolMessenger.Mobile/Resources/Fonts/NOTICE-OpenSans.txt" LogicalName="licenses/%(Filename)%(Extension)" />
     <BundleResource Include="../SchoolMessenger.Mobile/Platforms/iOS/Resources/PrivacyInfo.xcprivacy" Link="PrivacyInfo.xcprivacy" />
+    <BundleResource Include="../../licenses/Sparkle-LICENSE.txt" Link="licenses/Sparkle-LICENSE.txt" />
     <PartialAppManifest Include="Platforms/MacCatalyst/Info.Debug.plist" Condition="'$(Configuration)' == 'Debug'" />
     <Compile Include="../../tests/MacRuntimeChecks.cs" Link="MacRuntimeChecks.cs" Condition="'$(MacVerification)' == 'true'" />
   </ItemGroup>

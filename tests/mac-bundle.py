@@ -10,6 +10,7 @@ assert info['SUFeedURL']=='https://github.com/yd043105-pixel/gyomutalk-mac/relea
 assert info['SUPublicEDKey'] and info['SUEnableInstallerLauncherService'] and not info['SUShowReleaseNotes']
 assert (bundle/'Contents/PlugIns/GyomutalkUpdater.bundle/Contents/MacOS/GyomutalkUpdater').exists()
 assert (bundle/'Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle').exists()
+assert (bundle/'Contents/Resources/licenses/Sparkle-LICENSE.txt').exists()
 assert info['UIDeviceFamily'] == [2], 'Use the standard MAUI Catalyst control idiom'
 assert info.get('NSLocalNetworkUsageDescription')
 ats = info.get('NSAppTransportSecurity', {})

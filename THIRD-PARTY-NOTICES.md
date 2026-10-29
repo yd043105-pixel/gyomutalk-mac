@@ -11,4 +11,4 @@
 
 ## Desktop automatic updates
 
-Sparkle 2.10.1 — MIT license. Upstream license and acknowledgements are included in Sparkle.framework. https://github.com/sparkle-project/Sparkle
+Sparkle 2.10.1 — MIT license. Upstream MIT license is included in Contents/Resources/licenses/Sparkle-LICENSE.txt; the framework also contains its own resources. https://github.com/sparkle-project/Sparkle
