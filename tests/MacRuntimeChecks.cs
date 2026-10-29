@@ -43,6 +43,7 @@ internal static class MacRuntimeChecks
         try
         {
             await Wait(()=>MessengerPage.Active?.Handler is not null);await Task.Delay(1200);
+            Check(MacUpdater.Available,"native Sparkle AppKit updater loads inside the sandboxed Catalyst app without starting a network update check");
             var fixture=JsonDocument.Parse(Convert.FromBase64String(Environment.GetEnvironmentVariable("YY_MAC_FIXTURE_B64")!)).RootElement;
             Check(DeviceInfo.Platform==DevicePlatform.MacCatalyst,"Actual native Mac Catalyst process");
             Check(AppInfo.Current.Name=="교무톡"&&AppInfo.Current.VersionString=="1.0.0","Mac brand and pre-release version 1.0.0");

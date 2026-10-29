@@ -43,6 +43,12 @@ jobs:
           dotnet build src/SchoolMessenger.Mac -c Debug -r "$runtime" --no-restore -p:MacVerification=true -p:CodesignKey=- -p:CodesignRequireProvisioningProfile=false
           dotnet build .test-services/src/SchoolMessenger.Server -p:RestoreLockedMode=true
           dotnet build .test-services/src/SchoolMessenger.AnnouncementServer -p:RestoreLockedMode=true
+      - name: Embed signed updater into the native test application
+        run: |
+          runtime=maccatalyst-x64; arch=x86_64
+          [[ "$(uname -m)" != arm64 ]] || { runtime=maccatalyst-arm64; arch=arm64; }
+          bundle="$(find "src/SchoolMessenger.Mac/bin/Debug/net10.0-maccatalyst/$runtime" -maxdepth 1 -name '*.app' -print -quit)"
+          bash scripts/Embed-MacUpdater.sh "$bundle" "$arch"
       - name: Verify actual native application
         run: node tests/mac-runtime.mjs
       - name: Publish both Mac architectures

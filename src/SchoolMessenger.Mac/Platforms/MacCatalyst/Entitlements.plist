@@ -4,4 +4,6 @@
   <key>com.apple.security.app-sandbox</key><true/>
   <key>com.apple.security.network.client</key><true/>
   <key>com.apple.security.files.user-selected.read-write</key><true/>
+  <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+  <array><string>kr.school.kyomutalk.mac-spks</string><string>kr.school.kyomutalk.mac-spki</string></array>
 </dict></plist>

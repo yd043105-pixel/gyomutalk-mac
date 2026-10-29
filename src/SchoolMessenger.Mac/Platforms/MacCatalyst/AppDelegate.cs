@@ -5,11 +5,14 @@ namespace SchoolMessenger.Mobile;
 public sealed class AppDelegate:MauiUIApplicationDelegate
 {
     protected override MauiApp CreateMauiApp()=>MauiProgram.CreateMauiApp();
-#if MAC_VERIFY
     public override bool FinishedLaunching(UIApplication application,NSDictionary? options)
     {
         var result=base.FinishedLaunching(application,options);
-        MainThread.BeginInvokeOnMainThread(async()=>await MacRuntimeChecks.Run());return result;
-    }
+#if MAC_VERIFY
+        MainThread.BeginInvokeOnMainThread(async()=>{MacUpdater.Initialize(false);await MacRuntimeChecks.Run();});
+#else
+        MainThread.BeginInvokeOnMainThread(()=>MacUpdater.Initialize(true));
 #endif
+        return result;
+    }
 }

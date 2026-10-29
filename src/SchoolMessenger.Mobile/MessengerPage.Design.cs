@@ -141,6 +141,9 @@ public sealed partial class MessengerPage
             if(!source.Office&&role is "parent" or "student")SettingRow(role=="parent"?"설정 · 자녀 연결":"설정 · 내 고유번호",AccountSettings);
             if(source.Office)SettingRow("비밀번호 변경",()=>{OfficePasswordChange();return Task.CompletedTask;});
             SettingRow("약관·개인정보 안내",PolicyMenu);SettingRow("개인정보 열람·정정·삭제 요청",PrivacyRequests);SettingRow("업데이트 내역",()=>ShowUpdates(true));SettingRow("오류 신고 · 개선 의견",Feedback);
+#if MAC_DESKTOP
+            SettingRow("프로그램 업데이트",()=>MacUpdater.Settings(this));
+#endif
             SettingRow("로그아웃",async()=>{try{await source.Logout();}finally{source.Dispose();if(api==source)api=null;Login();}});return;
         }
         if(!source.Office&&role=="parent"&&user.TryGetProperty("membership",out var membership)&&membership.GetString()=="temporary")
