@@ -1,12 +1,12 @@
 """Inspect actual compiled Mac bundle; never infer signing/notarization from source."""
-import plistlib, subprocess, sys
+import plistlib, subprocess, sys, xml.etree.ElementTree as ET
 from pathlib import Path
 bundle, architecture = Path(sys.argv[1]), sys.argv[2]
 info = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
 assert info['CFBundleIdentifier'] == 'kr.school.kyomutalk.mac'
-assert info['CFBundleShortVersionString'] == '1.0.0'
+assert info['CFBundleShortVersionString'] == ET.parse('Directory.Build.props').findtext('./PropertyGroup/Version')
 assert info['CFBundleDisplayName'] == '교무톡'
-assert info['SUFeedURL']=='https://github.com/yd043105-pixel/gyomutalk-mac/releases/latest/download/appcast.xml'
+assert info['SUFeedURL']=='https://github.com/yd043105-pixel/gyomutalk-mac/releases/latest/download/appcast-'+architecture+'.xml'
 assert info['SUPublicEDKey'] and info['SUEnableInstallerLauncherService'] and not info['SUShowReleaseNotes']
 assert (bundle/'Contents/PlugIns/GyomutalkUpdater.bundle/Contents/MacOS/GyomutalkUpdater').exists()
 assert (bundle/'Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle').exists()

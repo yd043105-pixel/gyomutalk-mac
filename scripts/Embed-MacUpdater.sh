@@ -17,15 +17,15 @@ xcrun --sdk macosx clang -fobjc-arc -bundle -arch "$architecture" -mmacosx-versi
   -F "$folder" -framework Cocoa -framework Sparkle \
   -Wl,-rpath,@loader_path/../../../../Frameworks \
   src/SchoolMessenger.Mac/UpdaterPlugin/Updater.m -o "$plugin/Contents/MacOS/GyomutalkUpdater"
-python3 - "$bundle" "$plugin" <<'PY'
+python3 - "$bundle" "$plugin" "$architecture" <<'PY'
 import json,plistlib,sys,xml.etree.ElementTree as ET
 from pathlib import Path
-bundle,plugin=map(Path,sys.argv[1:]);config=json.loads(Path('config/update-publisher.json').read_text())
+bundle,plugin=map(Path,sys.argv[1:3]);config=json.loads(Path('config/update-publisher.json').read_text());architecture='arm64' if sys.argv[3]=='arm64' else 'x64'
 assert config['product']=='mac' and config['repository']=='yd043105-pixel/gyomutalk-mac'
 version=ET.parse('Directory.Build.props').findtext('./PropertyGroup/Version');major,minor,patch=map(int,version.split('.'))
 assert minor<1000 and patch<1000
 info=plistlib.loads((bundle/'Contents/Info.plist').read_bytes())
-info.update(SUFeedURL='https://github.com/'+config['repository']+'/releases/latest/download/appcast.xml',SUPublicEDKey=config['publicKey'],SUEnableAutomaticChecks=True,SUScheduledCheckInterval=86400,SUEnableInstallerLauncherService=True,SUShowReleaseNotes=False,CFBundleVersion=str(major*1000000+minor*1000+patch))
+info.update(SUFeedURL='https://github.com/'+config['repository']+'/releases/latest/download/appcast-'+architecture+'.xml',SUPublicEDKey=config['publicKey'],SUEnableAutomaticChecks=True,SUScheduledCheckInterval=86400,SUEnableInstallerLauncherService=True,SUShowReleaseNotes=False,CFBundleVersion=str(major*1000000+minor*1000+patch))
 (bundle/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
 (plugin/'Contents/Info.plist').write_bytes(plistlib.dumps(dict(CFBundleIdentifier='kr.school.kyomutalk.mac.updater',CFBundleName='GyomutalkUpdater',CFBundleExecutable='GyomutalkUpdater',CFBundlePackageType='BNDL',NSPrincipalClass='GYUpdaterPlugin')))
 PY

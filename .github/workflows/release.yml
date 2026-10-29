@@ -1,0 +1,47 @@
+name: Publish signed desktop update
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: ${{ !github.event.release.prerelease }}
+    uses: ./.github/workflows/verify.yml
+  publish:
+    needs: verify
+    runs-on: macos-26
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gyomutalk-mac-trial
+          path: artifacts
+      - name: Verify release and prepare signing dependencies
+        shell: bash
+        run: |
+          python3 -m pip install --break-system-packages cryptography==46.0.3
+          # Release Mac packages must already have Developer ID signatures and notarization.
+          for file in artifacts/gyomutalk-mac-*-macos-*.zip; do
+            folder="$(mktemp -d)"; ditto -x -k "$file" "$folder"
+            bundle="$(find "$folder" -maxdepth 1 -name '*.app' -print -quit)"
+            codesign -dv "$bundle" 2>&1 | grep -q 'Authority=Developer ID Application:'
+            xcrun stapler validate "$bundle"
+          done
+      - name: Sign exact installers and upload feed last
+        shell: bash
+        env:
+          UPDATER_ED25519_SEED: ${{ secrets.UPDATER_ED25519_SEED }}
+        run: |
+          version="$(python3 -c 'import xml.etree.ElementTree as E;print(E.parse("Directory.Build.props").findtext("./PropertyGroup/Version"))')"
+          for architecture in arm64 x64; do
+            asset="artifacts/gyomutalk-mac-$version-macos-$architecture.zip"
+            python3 scripts/Create-UpdateFeed.py --asset "$asset" --tag "$RELEASE_TAG" --architecture "$architecture" --output "artifacts/appcast-$architecture.xml"
+            gh release upload "$RELEASE_TAG" "$asset" "$asset.sha256" --repo "$GITHUB_REPOSITORY"
+          done
+          gh release upload "$RELEASE_TAG" artifacts/appcast-arm64.xml artifacts/appcast-x64.xml --repo "$GITHUB_REPOSITORY"
