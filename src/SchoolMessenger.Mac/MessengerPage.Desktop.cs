@@ -33,8 +33,8 @@ public sealed partial class MessengerPage
         if(hub is not null)_=DisposeDesktopHub(hub);
     }
     static async Task DisposeDesktopHub(HubConnection hub){try{await hub.DisposeAsync();}catch(Exception error)when(error is HttpRequestException or OperationCanceledException or InvalidOperationException){}}
-    static async Task<JsonElement> MacSend(MessengerApi source,string path,JsonObject payload)
-    {using var content=new StringContent(payload.ToJsonString(),Encoding.UTF8,"application/json");return await source.Send(path,content:content);}
+    static async Task<JsonElement> MacSend(MessengerApi source,string path,JsonObject payload,HttpMethod? method=null)
+    {using var content=new StringContent(payload.ToJsonString(),Encoding.UTF8,"application/json");return await source.Send(path,content:content,method:method);}
     async Task MacPeople()
     {
         var source=api!;var version=epoch;var people=await source.Get("api/users");if(!Current(source,version))return;
@@ -112,7 +112,9 @@ public sealed partial class MessengerPage
             catch(Exception e){error.Text=e.Message;}
             finally{send.IsEnabled=true;attach.IsEnabled=pending is null;}
         };fileZone.Add(attach);fields.Add(DesktopPanel(fileZone,10,Color.FromArgb("#F3F6FB")),0,4);
-        var footer=new Grid{Padding=new Thickness(20,10),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)}};var caption=Text("교직원에게 보내는 업무 메시지",11);caption.TextColor=Muted;caption.VerticalOptions=LayoutOptions.Center;footer.Add(caption);footer.Add(send,1);grid.Add(footer,0,2);
+        var footer=new Grid{Padding=new Thickness(20,10),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)}};var caption=Text("파일 제출 요청 · 마감일",12);caption.TextColor=Muted;caption.VerticalOptions=LayoutOptions.Center;
+        var collect=new CheckBox{AutomationId="mac-collect",Color=Blue,VerticalOptions=LayoutOptions.Center};var collectDate=new DatePicker{ClassId="school-field",Format="yyyy.MM.dd",Date=DateTime.UtcNow.AddHours(9).Date.AddDays(7),IsEnabled=false,VerticalOptions=LayoutOptions.Center};collect.CheckedChanged+=(_,e)=>collectDate.IsEnabled=e.Value&&pending is null;
+        footer.Add(new HorizontalStackLayout{Spacing=6,Children={collect,caption,collectDate}});footer.Add(send,1);grid.Add(footer,0,2);
         send.Clicked+=async(_,_)=>
         {
             if(api!=source||!Current(source,version))return;
@@ -123,8 +125,12 @@ public sealed partial class MessengerPage
                 {
                     var ids=recipients.ToArray();
                     if(ids.Length==0||string.IsNullOrWhiteSpace(text.Text))throw new InvalidOperationException("받는 사람과 메시지를 입력하세요.");
+                    var deadline=collectDate.Date is{} day?DateTime.SpecifyKind(day.Date,DateTimeKind.Unspecified):DateTime.UtcNow.AddHours(9).Date;
+                    if(collect.IsChecked&&deadline<DateTime.UtcNow.AddHours(9).Date)throw new InvalidOperationException("제출 마감일은 오늘 이후로 선택하세요.");
                     pending=new JsonObject{["clientId"]=client,["title"]=title.Text??"",["body"]=text.Text,["recipientIds"]=new JsonArray(ids.Select(x=>(JsonNode?)JsonValue.Create(x)).ToArray()),["attachmentIds"]=new JsonArray(files.Select(x=>(JsonNode?)JsonValue.Create(x)).ToArray()),["all"]=false};
-                    title.IsEnabled=text.IsEnabled=recipientRows.IsEnabled=self.IsEnabled=add.IsEnabled=false;
+                    // 서버가 마감일을 한국 시간 23:59:59로 맞춘다.
+                    if(collect.IsChecked)pending["submissionDeadline"]=new DateTimeOffset(deadline.AddHours(12),TimeSpan.FromHours(9)).ToUnixTimeMilliseconds();
+                    title.IsEnabled=text.IsEnabled=recipientRows.IsEnabled=self.IsEnabled=add.IsEnabled=collect.IsEnabled=collectDate.IsEnabled=false;
                 }
                 await MacSend(source,"api/messages",pending);if(api==source){await Navigation.PopAsync();homeTab="notices";view="sent";offset=0;await Home();}
             }
@@ -142,6 +148,8 @@ public sealed partial class MessengerPage
         var grid=new Grid{RowDefinitions={new(GridLength.Star),new(GridLength.Auto)},BackgroundColor=Colors.White};grid.Add(scroll);
         var sender=value.GetProperty("message").GetProperty("senderId").GetString();
         var reply=DesktopButton("답장",()=>MacCompose(sender),true);reply.Margin=16;reply.MinimumWidthRequest=100;reply.HorizontalOptions=LayoutOptions.End;
-        grid.Add(reply,0,1);page.Content=grid;page.AutomationId="mac-message-reader";
+        grid.Add(reply,0,1);
+        if(Field(value,"submissionRequestId") is{} requestId){var collect=DesktopButton("파일 제출 현황",()=>MacWork("submission-requests",requestId));collect.AutomationId="mac-open-submission";collect.Margin=16;collect.HorizontalOptions=LayoutOptions.Start;grid.Add(collect,0,1);}
+        page.Content=grid;page.AutomationId="mac-message-reader";
     }
 }

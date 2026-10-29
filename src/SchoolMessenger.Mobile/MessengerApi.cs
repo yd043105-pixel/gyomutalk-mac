@@ -93,9 +93,9 @@ public sealed class MessengerApi : IDisposable
     }
     public async Task<JsonElement> Get(string path)
     {using var response=await http.GetAsync(path);await Check(response);return await Read(response);}
-    public async Task<JsonElement> Send(string path,object? body=null,HttpContent? content=null)
+    public async Task<JsonElement> Send(string path,object? body=null,HttpContent? content=null,HttpMethod? method=null)
     {
-        if(csrf.Length==0)await Refresh();using var request=new HttpRequestMessage(HttpMethod.Post,path);request.Headers.Add("X-CSRF-TOKEN",csrf);var payload=body??new MobileEmpty();request.Content=content??JsonContent.Create(payload,MobileJson.Default.GetTypeInfo(payload.GetType())??throw new InvalidOperationException("지원하지 않는 요청입니다."));
+        if(csrf.Length==0)await Refresh();using var request=new HttpRequestMessage(method??HttpMethod.Post,path);request.Headers.Add("X-CSRF-TOKEN",csrf);var payload=body??new MobileEmpty();request.Content=content??JsonContent.Create(payload,MobileJson.Default.GetTypeInfo(payload.GetType())??throw new InvalidOperationException("지원하지 않는 요청입니다."));
         using var response=await http.SendAsync(request);await Check(response);var value=await Read(response);await Persist();return value;
     }
     public async Task Login(string username,string password,bool remember)
@@ -137,10 +137,11 @@ public sealed class MessengerApi : IDisposable
         await using var stream=await response.Content.ReadAsStreamAsync();return await ReadNoticeImage(stream);
         }
     }
-    public async Task ShareFile(string id,string name)
+    public Task ShareFile(string id,string name)=>ShareDownload("api/attachments/"+id+"/download",name,100L*1024*1024);
+    public async Task ShareDownload(string route,string name,long limit)
     {
-        using var response=await http.GetAsync("api/attachments/"+id+"/download",HttpCompletionOption.ResponseHeadersRead);await Check(response);
-        if(response.Content.Headers.ContentLength>100L*1024*1024)throw new InvalidOperationException("파일이 너무 큽니다.");
+        using var response=await http.GetAsync(route,HttpCompletionOption.ResponseHeadersRead);await Check(response);
+        if(response.Content.Headers.ContentLength>limit)throw new InvalidOperationException("파일이 너무 큽니다.");
         var folder=ShareFolder();Directory.CreateDirectory(folder);var path=Path.Combine(folder,Guid.NewGuid().ToString("N")+"-"+Path.GetFileName(name));
         try{await using(var output=File.Create(path))await response.Content.CopyToAsync(output);await Share.Default.RequestAsync(new ShareFileRequest("첨부 저장·공유",new ShareFile(path)));}
         catch{if(File.Exists(path))File.Delete(path);throw;}

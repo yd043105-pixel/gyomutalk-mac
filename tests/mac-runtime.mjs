@@ -29,7 +29,7 @@ try{
       const folder=path.dirname(report),request=path.join(folder,'mac-capture-request.json');
       if(existsSync(request)){
         const {name}=JSON.parse(readFileSync(request,'utf8'));
-        assert.ok(['mac-login.png','mac-messages.png','mac-compose.png','mac-message-detail.png'].includes(name));
+        assert.ok(['mac-login.png','mac-messages.png','mac-compose.png','mac-message-detail.png','mac-submissions.png','mac-todos.png'].includes(name));
         if(captured!==name){
           const screenshot=spawnSync('/usr/sbin/screencapture',['-x',path.join(output,name)],{encoding:'utf8',timeout:15000});
           if(screenshot.status!==0)writeFileSync(path.join(output,'mac-screen-capture-status.txt'),'System screen capture unavailable; UIKit-layer fallback used. '+(screenshot.stderr??''));
@@ -42,6 +42,6 @@ try{
   writeFileSync(path.join(output,'mac-runtime.log'),appLogs);
   assert.ok(report&&existsSync(report),'Native report missing: '+appLogs);
   const result=JSON.parse(readFileSync(report,'utf8'));copyFileSync(report,path.join(output,'mac-results.json'));
-  for(const name of ['mac-login.png','mac-messages.png','mac-compose.png','mac-message-detail.png'])if(!existsSync(path.join(output,name))&&existsSync(path.join(path.dirname(report),name)))copyFileSync(path.join(path.dirname(report),name),path.join(output,name));
+  for(const name of ['mac-login.png','mac-messages.png','mac-compose.png','mac-message-detail.png','mac-submissions.png','mac-todos.png'])if(!existsSync(path.join(output,name))&&existsSync(path.join(path.dirname(report),name)))copyFileSync(path.join(path.dirname(report),name),path.join(output,name));
   for(const check of result.passed)console.log('PASS '+check);assert.ok(result.ok,result.error);
 }finally{app?.kill();fixture.kill();}

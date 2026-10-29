@@ -1,5 +1,8 @@
 #if MAC_VERIFY && DEBUG
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using UIKit;
 namespace SchoolMessenger.Mobile;
 public sealed partial class MessengerPage
@@ -14,6 +17,10 @@ public sealed partial class MessengerPage
     internal Task MacVerifyCompose()=>MacCompose();
     internal Task MacVerifyDetail(string id)=>OfficeDetail(id);
     internal ContentView? MacVerifyReader=>desktopReader;
+    internal Task MacVerifyWork(string mode,string? id=null)=>MacWork(mode,id);
+    internal View? MacVerifyContent=>desktopContent.Content;
+    internal FlexLayout? MacVerifySubmissionTargets=>macSubmissionTargets;
+    internal bool MacVerifyIdle=>!busy;
     internal bool MacVerifyReady=>!busy&&!resuming&&desktopReader?.Content is Grid;
     internal async Task MacVerifyLogout(){var source=api!;await source.Logout();source.Dispose();api=null;Login();}
 }
@@ -28,6 +35,7 @@ internal static class MacRuntimeChecks
         foreach(var child in children)foreach(var descendant in Views(child))yield return descendant;
     }
     static void Check(bool value,string description){if(!value)throw new InvalidOperationException(description);passed.Add(description);Console.WriteLine("MAC_PROGRESS:"+description);}
+    static StringContent Json(JsonObject value)=>new(value.ToJsonString(),Encoding.UTF8,"application/json");
     static async Task Wait(Func<bool> condition){for(var i=0;i<600;i++){if(condition())return;await Task.Delay(100);}throw new InvalidOperationException("Mac native UI timeout");}
     static async Task Capture(string name)
     {
@@ -69,7 +77,38 @@ internal static class MacRuntimeChecks
             Check(sent.GetProperty("recipientCount").GetInt32()==1,"Native composer sends through authenticated server with one selected recipient");
             await Page.MacVerifyDetail(sent.GetProperty("id").GetString()!);
             Check(Page.MacVerifyReader?.Content is Grid details&&details.RowDefinitions.Count==2&&details.Children.OfType<Button>().Any(b=>b.Text=="답장"),"Reply remains in fixed footer outside the message scroll area");
-            await Capture("mac-message-detail.png");await Page.MacVerifyLogout();
+            await Capture("mac-message-detail.png");
+            // File collection and to-dos use invented staff on the isolated loopback server only.
+            var office=fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost");var password=fixture.GetProperty("password").GetString()!;var admin=Page.MacVerifyApi;var staff=new List<string>();
+            for(var i=1;i<=6;i++)staff.Add((await admin.Send("api/admin/users",content:Json(new JsonObject{["username"]="mac.work."+i,["name"]="가상교사"+i.ToString("00",CultureInfo.InvariantCulture),["department"]="업무검사",["password"]=password,["isAdmin"]=false,["canBroadcast"]=false}))).GetProperty("id").GetString()!);
+            var request=await admin.Send("api/messages",content:Json(new JsonObject{["clientId"]=Guid.NewGuid().ToString(),["title"]="Mac 파일 제출 검증",["body"]="부서별 운영 계획 자료를 제출해 주세요.",["recipientIds"]=new JsonArray(staff.Select(x=>(JsonNode?)JsonValue.Create(x)).ToArray()),["attachmentIds"]=new JsonArray(),["all"]=false,["submissionDeadline"]=DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeMilliseconds()}));
+            var requestId=request.GetProperty("id").GetString()!;
+            using(var teacher=new MessengerApi(office,true))
+            {
+                await teacher.Login("mac.work.1",password,false);var synthetic=Path.Combine(Folder,"2026학년도_부서별_운영계획서_교육과정_평가계획_세부운영내용_최종검토완료본_제출자료.txt");await File.WriteAllTextAsync(synthetic,"synthetic-submission");
+                var upload=await teacher.Upload(new FileResult(synthetic),false);
+                await teacher.Send("api/submission-requests/"+requestId+"/submit",content:Json(new JsonObject{["clientId"]=Guid.NewGuid().ToString("N"),["attachmentIds"]=new JsonArray((JsonNode?)JsonValue.Create(upload.GetProperty("id").GetString()))}));await teacher.Logout();
+            }
+            await Page.MacVerifyWork("submission-requests",requestId);var targets=Page.MacVerifySubmissionTargets!;var cards=targets.Children.OfType<Border>().ToArray();
+            Check(cards.Length==6,"Mac submission status shows every recipient as a compact name card");
+            for(var i=0;i<100&&!(cards.All(c=>c.Width>0)&&Math.Abs(cards[0].Y-cards[3].Y)<1&&cards[4].Y>cards[0].Y);i++)await Task.Delay(100);
+            Check(Math.Abs(cards[0].Y-cards[3].Y)<1&&cards[4].Y>cards[0].Y&&cards.All(c=>c.X+c.Width<=targets.Width+1),"Four recipient cards fit on one row at the default window size without horizontal overflow");
+            Check(Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.AutomationId=="mac-submission-summary"&&l.Text.StartsWith("제출 1/6명",StringComparison.Ordinal)),"Collector sees submitted, missing and exempt counts");
+            var file=Views(cards.Single(c=>c.ClassId=="제출 완료")).OfType<Button>().Single(b=>b.AutomationId=="mac-submission-file");
+            Check(file.LineBreakMode==LineBreakMode.TailTruncation&&file.Width<=cards[0].Width&&ToolTipProperties.GetText(file)?.ToString()?.Contains("최종검토완료본")==true,"Long submitted filenames are truncated while the full name stays in the tooltip");
+            await Capture("mac-submissions.png");
+            await admin.Send("api/submission-requests/"+requestId+"/targets/"+staff[1],content:Json(new JsonObject{["exempt"]=true}),method:HttpMethod.Patch);
+            await Page.MacVerifyWork("submission-requests",requestId);
+            Check(Page.MacVerifySubmissionTargets!.Children.OfType<Border>().Count(c=>c.ClassId=="면제")==1,"Exemption saved with PATCH is reflected in the recipient card state");
+            var due=DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).DateTime).AddDays(3);
+            var todoId=(await admin.Send("api/todos",content:Json(new JsonObject{["title"]="Mac 할 일 검증",["dueDate"]=due.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture),["status"]="open",["revision"]=0}))).GetProperty("id").GetString()!;
+            await Page.MacVerifyWork("todos",todoId);var work=Views(Page.MacVerifyContent!).ToArray();
+            Check(work.OfType<Label>().Any(l=>l.AutomationId=="mac-work-summary-"+todoId&&l.Text.EndsWith("D-3",StringComparison.Ordinal))&&work.OfType<Label>().Any(l=>l.AutomationId=="mac-todo-deadline"&&l.Text.EndsWith("D-3",StringComparison.Ordinal)),"Mac to-do list counts D-Day by Korean date");
+            await Capture("mac-todos.png");
+            work.OfType<Picker>().Single(p=>p.AutomationId=="mac-todo-status").SelectedIndex=1;((IButtonController)work.OfType<Button>().Single(b=>b.AutomationId=="mac-todo-save")).SendClicked();
+            var saved=false;for(var i=0;i<100&&!saved;i++){await Task.Delay(100);saved=(await admin.Get("api/todos?offset=0")).EnumerateArray().Any(t=>t.GetProperty("id").GetString()==todoId&&t.GetProperty("status").GetString()=="done");}
+            Check(saved,"Editing a to-do on Mac saves through PATCH with its revision");await Wait(()=>Page.MacVerifyIdle);
+            await Page.MacVerifyLogout();
             Check(!Page.MacVerifyConnected,"Logout closes the desktop connection");
             Check(Page.MacVerifyReader is null&&!Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId?.StartsWith("mac-message-")==true),"Logout removes the message reader and restores the login screen");
             try{_ =new MessengerApi("http://example.com",true);throw new InvalidOperationException("Unsafe HTTP accepted");}catch(InvalidOperationException e)when(e.Message.Contains("https://")){Check(true,"Non-local cleartext server address is rejected");}
