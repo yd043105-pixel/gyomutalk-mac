@@ -19,7 +19,7 @@ public sealed partial class MessengerPage
     internal ContentView? MacVerifyReader=>desktopReader;
     internal Task MacVerifyWork(string mode,string? id=null)=>MacWork(mode,id);
     internal View? MacVerifyContent=>desktopContent.Content;
-    internal FlexLayout? MacVerifySubmissionTargets=>macSubmissionTargets;
+    internal Grid? MacVerifySubmissionTargets=>macSubmissionTargets;
     internal bool MacVerifyIdle=>!busy;
     internal bool MacVerifyReady=>!busy&&!resuming&&desktopReader?.Content is Grid;
     internal async Task MacVerifyLogout(){var source=api!;await source.Logout();source.Dispose();api=null;Login();}
@@ -92,7 +92,7 @@ internal static class MacRuntimeChecks
             await Page.MacVerifyWork("submission-requests",requestId);var targets=Page.MacVerifySubmissionTargets!;var cards=targets.Children.OfType<Border>().ToArray();
             Check(cards.Length==6,"Mac submission status shows every recipient as a compact name card");
             for(var i=0;i<100&&!(cards.All(c=>c.Width>0)&&Math.Abs(cards[0].Y-cards[3].Y)<1&&cards[4].Y>cards[0].Y);i++)await Task.Delay(100);
-            Check(Math.Abs(cards[0].Y-cards[3].Y)<1&&cards[4].Y>cards[0].Y&&cards.All(c=>c.X+c.Width<=targets.Width+1),"Four recipient cards fit on one row at the default window size without horizontal overflow");
+            Check(targets.ColumnDefinitions.Count==4&&Math.Abs(cards[0].Y-cards[3].Y)<1&&cards[4].Y>cards[0].Y&&cards.All(c=>c.X+c.Width<=targets.Width+1),$"Four recipient cards fit on one row at the default window size without horizontal overflow (grid {targets.Width:0}px, {targets.ColumnDefinitions.Count} columns)");
             Check(Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.AutomationId=="mac-submission-summary"&&l.Text.StartsWith("제출 1/6명",StringComparison.Ordinal)),"Collector sees submitted, missing and exempt counts");
             var file=Views(cards.Single(c=>c.ClassId=="제출 완료")).OfType<Button>().Single(b=>b.AutomationId=="mac-submission-file");
             Check(file.LineBreakMode==LineBreakMode.TailTruncation&&file.Width<=cards[0].Width&&ToolTipProperties.GetText(file)?.ToString()?.Contains("최종검토완료본")==true,"Long submitted filenames are truncated while the full name stays in the tooltip");

@@ -9,7 +9,7 @@ namespace SchoolMessenger.Mobile;
 public sealed partial class MessengerPage
 {
     readonly Dictionary<string,JsonObject> macPendingSubmissions=new();
-    FlexLayout? macSubmissionTargets;
+    Grid? macSubmissionTargets;
     static DateOnly KoreanToday=>DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).DateTime);
     static string? Field(JsonElement value,string name)=>value.TryGetProperty(name,out var p)&&p.ValueKind==JsonValueKind.String?p.GetString():null;
     static string TodoStatus(string? status)=>status switch{"suggested"=>"추천 · 확인 필요","open"=>"진행 중","done"=>"완료",_=>"제외"};
@@ -110,8 +110,14 @@ public sealed partial class MessengerPage
             stack.Add(actions);
         }
         // 이름 중심 카드: 보낸 사람은 한 줄 최대 4명, 창이 좁아지면 열 수를 줄인다.
-        var grid=new FlexLayout{Wrap=Microsoft.Maui.Layouts.FlexWrap.Wrap,Direction=Microsoft.Maui.Layouts.FlexDirection.Row,AutomationId="mac-submission-targets"};macSubmissionTargets=grid;
-        grid.SizeChanged+=(_,_)=>{if(grid.Width<=0)return;var columns=mine?Math.Clamp((int)(grid.Width/132),1,4):1;var width=Math.Floor(grid.Width/columns)-8;foreach(var child in grid.Children.OfType<View>())child.WidthRequest=width;};
+        var grid=new Grid{ColumnSpacing=8,RowSpacing=8,AutomationId="mac-submission-targets"};macSubmissionTargets=grid;var columns=0;
+        void Arrange(int count)
+        {
+            if(count==columns)return;columns=count;grid.ColumnDefinitions.Clear();grid.RowDefinitions.Clear();var cards=grid.Children.OfType<View>().ToArray();
+            for(var c=0;c<count;c++)grid.ColumnDefinitions.Add(new(GridLength.Star));for(var r=0;r<(cards.Length+count-1)/count;r++)grid.RowDefinitions.Add(new(GridLength.Auto));
+            for(var i=0;i<cards.Length;i++){Grid.SetColumn(cards[i],i%count);Grid.SetRow(cards[i],i/count);}
+        }
+        grid.SizeChanged+=(_,_)=>{if(grid.Width>0)Arrange(mine?Math.Clamp((int)((grid.Width+8)/140),1,4):1);};
         foreach(var target in targets)
         {
             var exempt=target.GetProperty("exempt").GetBoolean();var done=target.GetProperty("submittedAt").ValueKind!=JsonValueKind.Null;var name=Field(target,"name")??"";
@@ -125,7 +131,7 @@ public sealed partial class MessengerPage
                 var entry=DesktopButton(fileName+(expired?" (만료)":""),()=>source.ShareFile(fileId,fileName));entry.AutomationId="mac-submission-file";entry.FontSize=11;entry.MinimumHeightRequest=26;entry.Padding=new Thickness(6,3);entry.HorizontalOptions=LayoutOptions.Fill;entry.IsEnabled=!expired;
                 ToolTipProperties.SetText(entry,description);SemanticProperties.SetDescription(entry,description);content.Add(entry);
             }
-            var card=DesktopPanel(content,8,Color.FromArgb("#F8FAFD"));card.Margin=new Thickness(0,0,8,8);card.MinimumHeightRequest=48;card.AutomationId="mac-submission-target";card.ClassId=state;
+            var card=DesktopPanel(content,8,Color.FromArgb("#F8FAFD"));card.MinimumHeightRequest=48;card.AutomationId="mac-submission-target";card.ClassId=state;
             ToolTipProperties.SetText(card,name+" · "+state);SemanticProperties.SetDescription(card,name+" · "+state);
             if(mine&&!closed)
             {
@@ -141,7 +147,7 @@ public sealed partial class MessengerPage
             }
             grid.Add(card);
         }
-        stack.Add(grid);
+        Arrange(mine?4:1);stack.Add(grid);
         if(!mine&&!closed&&targets.Length>0&&!targets[0].GetProperty("exempt").GetBoolean())
         {
             var hint=Text("답장 없이 파일만 제출할 수 있습니다. 재제출하면 최신 파일로 바뀝니다.",12);hint.TextColor=Muted;stack.Add(hint);
