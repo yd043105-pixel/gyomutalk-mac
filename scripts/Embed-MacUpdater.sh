@@ -20,7 +20,7 @@ xcrun --sdk macosx clang -fobjc-arc -bundle -arch "$architecture" -mmacosx-versi
 python3 - "$bundle" "$plugin" "$architecture" <<'PY'
 import json,plistlib,sys,xml.etree.ElementTree as ET
 from pathlib import Path
-bundle,plugin=map(Path,sys.argv[1:3]);config=json.loads(Path('config/update-publisher.json').read_text());architecture='arm64' if sys.argv[3]=='arm64' else 'x64'
+bundle,plugin=map(Path,sys.argv[1:3]);publisher=Path('config/update-publisher-mac.json');config=json.loads((publisher if publisher.exists() else Path('config/update-publisher.json')).read_text());architecture='arm64' if sys.argv[3]=='arm64' else 'x64'
 assert config['product']=='mac' and config['repository']=='yd043105-pixel/gyomutalk-mac'
 version=ET.parse('Directory.Build.props').findtext('./PropertyGroup/Version');major,minor,patch=map(int,version.split('.'))
 assert minor<1000 and patch<1000

@@ -25,7 +25,7 @@ jobs:
       - name: Verify release and prepare signing dependencies
         shell: bash
         run: |
-          python3 -m pip install --break-system-packages cryptography==46.0.3
+          python3 -m pip install --break-system-packages cryptography==50.0.2
           # Release Mac packages must already have Developer ID signatures and notarization.
           for file in artifacts/gyomutalk-mac-*-macos-*.zip; do
             folder="$(mktemp -d)"; ditto -x -k "$file" "$folder"
