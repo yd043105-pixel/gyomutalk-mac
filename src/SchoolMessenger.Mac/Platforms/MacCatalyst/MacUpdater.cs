@@ -5,6 +5,7 @@ internal static class MacUpdater
 {
     static IntPtr plugin;
     internal static bool Available=>plugin!=IntPtr.Zero;
+    internal static bool CanInstall=>Available&&SendBool(plugin,sel_registerName("canInstallNow"));
     internal static void Initialize(bool automatic)
     {
         try
@@ -29,4 +30,5 @@ internal static class MacUpdater
     [DllImport("/usr/lib/libobjc.dylib")]static extern IntPtr objc_getClass(string name);
     [DllImport("/usr/lib/libobjc.dylib")]static extern IntPtr sel_registerName(string selector);
     [DllImport("/usr/lib/libobjc.dylib",EntryPoint="objc_msgSend")]static extern IntPtr Send(IntPtr target,IntPtr selector);
+    [DllImport("/usr/lib/libobjc.dylib",EntryPoint="objc_msgSend")][return:MarshalAs(UnmanagedType.I1)]static extern bool SendBool(IntPtr target,IntPtr selector);
 }

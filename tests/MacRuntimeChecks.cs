@@ -44,6 +44,7 @@ internal static class MacRuntimeChecks
         {
             await Wait(()=>MessengerPage.Active?.Handler is not null);await Task.Delay(1200);
             Check(MacUpdater.Available,"native Sparkle AppKit updater loads inside the sandboxed Catalyst app without starting a network update check");
+            Check(MacUpdater.CanInstall,"native updater can query the managed application before restarting");
             var fixture=JsonDocument.Parse(Convert.FromBase64String(Environment.GetEnvironmentVariable("YY_MAC_FIXTURE_B64")!)).RootElement;
             Check(DeviceInfo.Platform==DevicePlatform.MacCatalyst,"Actual native Mac Catalyst process");
             Check(AppInfo.Current.Name=="교무톡"&&AppInfo.Current.VersionString==typeof(App).Assembly.GetName().Version!.ToString(3),"Mac brand and configured release version");
@@ -59,6 +60,7 @@ internal static class MacRuntimeChecks
             Check(!Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId?.StartsWith("school-tab-")==true),"Mac uses desktop navigation without duplicate mobile bottom tabs");await Capture("mac-messages.png");
             var before=await Page.MacVerifyApi.Get("api/messages?box=received&offset=0");
             await Page.MacVerifyCompose();var compose=(ContentPage)Page.Navigation.NavigationStack.Last();var controls=Views(compose.Content).ToArray();
+            Check(!MacUpdater.CanInstall,"updater defers installation while a message composer is open");
             ((IButtonController)controls.OfType<Button>().Single(b=>b.Text=="나에게 전송")).SendClicked();
             controls.OfType<Entry>().Single().Text="Mac 네이티브 전송 검증";controls.OfType<Editor>().Single().Text="가상 학교 데이터로 Mac 메시지 작성과 수신 연결을 검사합니다.";await Capture("mac-compose.png");
             var send=controls.OfType<Button>().Single(b=>b.AutomationId=="mac-send");((IButtonController)send).SendClicked();
