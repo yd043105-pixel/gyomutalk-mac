@@ -1,0 +1,58 @@
+name: Native Mac verification
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  mac:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      YY_TEST_SERVICE_ROOT: ${{ github.workspace }}/.test-services
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Checkout pinned server sources for synthetic tests only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: yd043105-pixel/gyomutalk-server
+          ref: 4fec0dbbfc898339a2501ef68ef01035fc0c4dc6
+          path: .test-services
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: 10.0.402
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - name: Install pinned Apple workload
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          dotnet workload install maui-maccatalyst --version 10.0.401
+          dotnet restore src/SchoolMessenger.Mac --locked-mode
+      - name: Build native app and isolated test services
+        run: |
+          runtime=maccatalyst-x64
+          [[ "$(uname -m)" != arm64 ]] || runtime=maccatalyst-arm64
+          dotnet build src/SchoolMessenger.Mac -c Debug -r "$runtime" --no-restore -p:MacVerification=true -p:CodesignKey=- -p:CodesignRequireProvisioningProfile=false
+          dotnet build .test-services/src/SchoolMessenger.Server -p:RestoreLockedMode=true
+          dotnet build .test-services/src/SchoolMessenger.AnnouncementServer -p:RestoreLockedMode=true
+      - name: Verify actual native application
+        run: node tests/mac-runtime.mjs
+      - name: Publish both Mac architectures
+        run: |
+          bash scripts/Build-Mac.sh maccatalyst-arm64
+          bash scripts/Build-Mac.sh maccatalyst-x64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: gyomutalk-mac-1.0.0-trial
+          path: artifacts/mac/
+          retention-days: 7
+          if-no-files-found: error

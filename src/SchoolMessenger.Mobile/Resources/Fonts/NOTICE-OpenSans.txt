@@ -1,0 +1,1 @@
+Open Sans Regular and Semibold: Digitized data copyright © 2010-2011, Google Corporation. Licensed under the Apache License, Version 2.0. These fonts are bundled unchanged from the .NET MAUI template.

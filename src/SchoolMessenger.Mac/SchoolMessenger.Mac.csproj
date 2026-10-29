@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-maccatalyst</TargetFramework><RuntimeIdentifiers>maccatalyst-arm64;maccatalyst-x64</RuntimeIdentifiers>
+    <OutputType>Exe</OutputType><UseMaui>true</UseMaui><SingleProject>true</SingleProject>
+    <RootNamespace>SchoolMessenger.Mobile</RootNamespace><AssemblyName>SchoolMessenger.Mac</AssemblyName>
+    <ApplicationTitle>교무톡</ApplicationTitle><ApplicationId>kr.school.kyomutalk.mac</ApplicationId>
+    <ApplicationDisplayVersion>$(Version)</ApplicationDisplayVersion><ApplicationVersion>2</ApplicationVersion>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <DefineConstants>$(DefineConstants);TEACHER_APP;MAC_DESKTOP</DefineConstants>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer><UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>
+    <CodesignEntitlements>Platforms/MacCatalyst/Entitlements.plist</CodesignEntitlements><CreatePackage>false</CreatePackage>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MacVerification)' == 'true'"><DefineConstants>$(DefineConstants);MAC_VERIFY</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../SchoolMessenger.Mobile/*.cs" Link="Shared/%(Filename)%(Extension)" />
+    <MauiXaml Include="../SchoolMessenger.Mobile/App.xaml" Link="App.xaml" />
+    <MauiXaml Include="../SchoolMessenger.Mobile/Resources/Styles/*.xaml" Link="Resources/Styles/%(Filename)%(Extension)" />
+    <Compile Include="../SchoolMessenger.Contracts/*.cs" Link="Contracts/%(Filename)%(Extension)" />
+    <Compile Include="../SchoolMessenger.Shared/ReleaseNotice.cs;../SchoolMessenger.Shared/SchoolDirectory.cs" Link="Shared/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../config/school-directory.json" LogicalName="SchoolMessenger.SchoolDirectory.json" />
+    <EmbeddedResource Include="../SchoolMessenger.Shared/updates.json" LogicalName="SchoolMessenger.UpdateNotes.json" />
+    <MauiIcon Include="../SchoolMessenger.Shared/Branding/appicon.svg" ForegroundFile="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#245BC6" />
+    <MauiSplashScreen Include="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#245BC6" BaseSize="128,128" />
+    <MauiImage Include="../SchoolMessenger.Mobile/Resources/Images/*" Link="Resources/Images/%(Filename)%(Extension)" />
+    <MauiImage Include="../SchoolMessenger.Shared/Branding/brand_mark.svg" Link="Resources/Images/brand_mark.svg" BaseSize="128,128" />
+    <MauiFont Include="../SchoolMessenger.Mobile/Resources/Fonts/*.ttf" Link="Resources/Fonts/%(Filename)%(Extension)" />
+    <MauiAsset Include="../../LICENSE;../../THIRD-PARTY-NOTICES.md;../SchoolMessenger.Mobile/Resources/Fonts/LICENSE-OpenSans.txt;../SchoolMessenger.Mobile/Resources/Fonts/NOTICE-OpenSans.txt" LogicalName="licenses/%(Filename)%(Extension)" />
+    <BundleResource Include="../SchoolMessenger.Mobile/Platforms/iOS/Resources/PrivacyInfo.xcprivacy" Link="PrivacyInfo.xcprivacy" />
+    <PartialAppManifest Include="Platforms/MacCatalyst/Info.Debug.plist" Condition="'$(Configuration)' == 'Debug'" />
+    <Compile Include="../../tests/MacRuntimeChecks.cs" Link="MacRuntimeChecks.cs" Condition="'$(MacVerification)' == 'true'" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Maui.Essentials" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
+  </ItemGroup>
+</Project>

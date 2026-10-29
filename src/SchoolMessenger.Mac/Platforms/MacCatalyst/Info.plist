@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>교무톡</string>
+  <!-- MAUI's supported default keeps shared controls and colors consistent on Mac. -->
+  <key>UIDeviceFamily</key><array><integer>2</integer></array>
+  <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+  <key>CFBundleDevelopmentRegion</key><string>ko</string>
+  <key>NSHumanReadableCopyright</key><string>Copyright © 2026 김동욱. MIT License.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>학교 교직원망 또는 VPN의 학교 서버에서 메시지와 업무 자료를 확인합니다.</string>
+  <key>XSAppIconAssets</key><string>Assets.xcassets/appicon.appiconset</string>
+</dict></plist>
