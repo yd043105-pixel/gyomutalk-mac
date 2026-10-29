@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: mac-${{ github.ref }}
+  group: mac-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   mac:
