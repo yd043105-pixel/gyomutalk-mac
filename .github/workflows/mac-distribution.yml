@@ -1,0 +1,126 @@
+name: Mac distribution candidate
+# Re-signs the verified trial ZIPs; never creates or edits a GitHub Release.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: rehearsal = self-signed pipeline check without Apple credentials; notarize = Developer ID + Apple notarization
+        type: choice
+        options: [rehearsal, notarize]
+        default: rehearsal
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        default: notarize
+permissions:
+  contents: read
+jobs:
+  trial:
+    # The existing trial build and native checks, unchanged; both jobs below only consume its artifact.
+    uses: ./.github/workflows/verify.yml
+  rehearsal:
+    if: ${{ inputs.mode != 'notarize' }}
+    needs: trial
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      MAC_SIGN_REHEARSAL: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gyomutalk-mac-trial
+          path: artifacts/trial
+      - name: Create throwaway self-signed identity in a temporary keychain
+        run: |
+          export MAC_P12_PASSWORD="$(openssl rand -hex 24)"
+          bash scripts/New-MacRehearsalIdentity.sh "$RUNNER_TEMP/gyomutalk-secrets"
+          bash scripts/Import-MacSigningKeychain.sh "$RUNNER_TEMP/gyomutalk-secrets/rehearsal.p12"
+      - name: Sign, package and verify both architectures
+        run: |
+          version="$(python3 -c 'import xml.etree.ElementTree as E;print(E.parse("Directory.Build.props").findtext("./PropertyGroup/Version"))')"
+          for architecture in arm64 x64; do
+            python3 scripts/mac-distribution.py sign "artifacts/trial/gyomutalk-mac-$version-macos-$architecture.zip" "$architecture" artifacts/signed
+            python3 scripts/mac-distribution.py notarize "$(ls -d artifacts/signed/$architecture/*.app)" "$architecture" artifacts/candidate
+            python3 scripts/mac-distribution.py verify "artifacts/candidate/gyomutalk-mac-$version-macos-$architecture-rehearsal-not-for-distribution.zip" "$architecture" --launch --report "artifacts/candidate/verification-$architecture.json"
+          done
+      - name: Remove temporary keychain
+        if: always()
+        run: bash scripts/Remove-MacSigningKeychain.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: gyomutalk-mac-signing-rehearsal
+          path: artifacts/candidate/
+          retention-days: 3
+          if-no-files-found: warn
+  notarize:
+    if: ${{ inputs.mode == 'notarize' }}
+    needs: trial
+    runs-on: macos-26
+    timeout-minutes: 75
+    # Secrets live only in this environment; add required reviewers and restrict it to main.
+    environment: mac-distribution
+    env:
+      MAC_TEAM_ID: ${{ vars.MAC_TEAM_ID }}
+    steps:
+      - name: Check required credentials
+        env:
+          P12: ${{ secrets.MAC_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_P12_PASSWORD }}
+          PROFILE: ${{ secrets.MAC_PROVISIONING_PROFILE_BASE64 }}
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          missing=()
+          for pair in "MAC_TEAM_ID (variable):$MAC_TEAM_ID" "MAC_DEVELOPER_ID_P12_BASE64:$P12" "MAC_DEVELOPER_ID_P12_PASSWORD:$P12_PASSWORD" "MAC_PROVISIONING_PROFILE_BASE64:$PROFILE" "APPLE_NOTARY_KEY_P8_BASE64:$NOTARY_KEY" "APPLE_NOTARY_KEY_ID:$NOTARY_KEY_ID" "APPLE_NOTARY_ISSUER_ID:$NOTARY_ISSUER"; do
+            [[ -n "${pair#*:}" ]] || missing+=("${pair%%:*}")
+          done
+          if (( ${#missing[@]} )); then printf 'Missing in the mac-distribution environment: %s\n' "${missing[@]}" >&2; exit 1; fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gyomutalk-mac-trial
+          path: artifacts/trial
+      - name: Decode credentials into the runner's temporary folder
+        env:
+          P12: ${{ secrets.MAC_DEVELOPER_ID_P12_BASE64 }}
+          PROFILE: ${{ secrets.MAC_PROVISIONING_PROFILE_BASE64 }}
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+        run: |
+          umask 077
+          folder="$RUNNER_TEMP/gyomutalk-secrets"; mkdir -p "$folder"
+          printf '%s' "$P12" | base64 --decode > "$folder/developer-id.p12"
+          printf '%s' "$PROFILE" | base64 --decode > "$folder/developer-id.provisionprofile"
+          printf '%s' "$NOTARY_KEY" | base64 --decode > "$folder/notary.p8"
+          { echo "MAC_PROVISIONING_PROFILE=$folder/developer-id.provisionprofile"; echo "APPLE_NOTARY_KEY_PATH=$folder/notary.p8"; } >> "$GITHUB_ENV"
+      - name: Import Developer ID identity into a temporary keychain
+        env:
+          MAC_P12_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_P12_PASSWORD }}
+        run: bash scripts/Import-MacSigningKeychain.sh "$RUNNER_TEMP/gyomutalk-secrets/developer-id.p12"
+      - name: Sign, notarize, staple and verify both architectures
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          version="$(python3 -c 'import xml.etree.ElementTree as E;print(E.parse("Directory.Build.props").findtext("./PropertyGroup/Version"))')"
+          for architecture in arm64 x64; do
+            python3 scripts/mac-distribution.py sign "artifacts/trial/gyomutalk-mac-$version-macos-$architecture.zip" "$architecture" artifacts/signed
+            python3 scripts/mac-distribution.py notarize "$(ls -d artifacts/signed/$architecture/*.app)" "$architecture" artifacts/candidate
+            python3 scripts/mac-distribution.py verify "artifacts/candidate/gyomutalk-mac-$version-macos-$architecture.zip" "$architecture" --launch --report "artifacts/candidate/verification-$architecture.json"
+          done
+          cp artifacts/signed/entitlements-*.plist artifacts/candidate/
+      - name: Remove temporary keychain and decoded credentials
+        if: always()
+        run: bash scripts/Remove-MacSigningKeychain.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: gyomutalk-mac-distribution-candidate
+          path: artifacts/candidate/
+          retention-days: 14
+          if-no-files-found: warn

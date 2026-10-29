@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Developer ID distribution only. scripts/Sign-MacDistribution.sh replaces $(AppIdentifierPrefix) with the Team ID. -->
 <plist version="1.0"><dict>
   <key>com.apple.security.app-sandbox</key><true/>
   <key>com.apple.security.network.client</key><true/>
   <key>com.apple.security.files.user-selected.read-write</key><true/>
+  <!-- The .NET runtime JIT needs MAP_JIT under the hardened runtime. -->
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <!-- Sparkle's sandboxed installer and status services. -->
+  <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+  <array><string>kr.school.kyomutalk.mac-spks</string><string>kr.school.kyomutalk.mac-spki</string></array>
   <key>keychain-access-groups</key><array><string>$(AppIdentifierPrefix)kr.school.kyomutalk.mac</string></array>
 </dict></plist>

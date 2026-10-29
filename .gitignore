@@ -76,3 +76,11 @@ operations/
 school-evidence/
 .test-services/
 **/__pycache__/
+
+# Apple signing material never belongs in Git
+*.cer
+*.p8
+*.provisionprofile
+*.keychain
+*.keychain-db
+.signing/

@@ -13,6 +13,7 @@
 - [교직원 사용 안내](docs/public/02_교직원_사용안내.md)
 - [학교 내부기안 작성양식](docs/public/학교도입_내부기안_작성양식.txt)
 - [분리 저장소와 호환성 관리](docs/repository-split.md)
+- [Mac 배포 후보: Developer ID 서명과 공증](docs/mac-distribution-signing.md)
 
 ## 빌드
 
@@ -25,7 +26,7 @@ bash scripts/Build-Mac.sh maccatalyst-arm64
 bash scripts/Build-Mac.sh maccatalyst-x64
 ```
 
-GitHub Actions의 제품별 검증이 성공하면 Artifacts에서 시험 산출물을 내려받습니다. 현재 모두 1.0.0 시험본이며 정식 Release는 아직 발행하지 않았습니다. 정식 Release를 발행하면 PC 프로그램이 서명된 업데이트 피드를 하루 한 번 확인합니다([업데이트 안내](docs/desktop-updates.md)). Windows 일반 배포용 코드 서명과 Mac Developer ID 서명·공증은 별도 준비가 필요합니다.
+GitHub Actions의 제품별 검증이 성공하면 Artifacts에서 시험 산출물을 내려받습니다. 현재 모두 1.0.0 시험본이며 정식 Release는 아직 발행하지 않았습니다. 정식 Release를 발행하면 PC 프로그램이 서명된 업데이트 피드를 하루 한 번 확인합니다([업데이트 안내](docs/desktop-updates.md)). Windows 일반 배포용 코드 서명은 별도 준비가 필요합니다. Mac Developer ID 서명·Apple 공증 배포 후보는 시험본을 다시 서명해 만들며, 필요한 GitHub secrets와 로컬 Keychain 절차는 [Mac 배포 후보 안내](docs/mac-distribution-signing.md)에 있습니다.
 
 서버: [gyomutalk-server](https://github.com/yd043105-pixel/gyomutalk-server) / Windows: [gyomutalk-windows](https://github.com/yd043105-pixel/gyomutalk-windows) / Mac: [gyomutalk-mac](https://github.com/yd043105-pixel/gyomutalk-mac)
 
