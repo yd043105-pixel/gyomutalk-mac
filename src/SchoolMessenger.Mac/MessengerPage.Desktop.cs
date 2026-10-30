@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -16,6 +17,7 @@ public sealed partial class MessengerPage
         var source=api;if(source?.Office!=true)return;
         if(desktopOwner==source&&desktopHub is not null)return;
         StopDesktopPresence();desktopOwner=source;
+        if(!await OpenDesktopArchive(source)||desktopOwner!=source)return;
         var hub=new HubConnectionBuilder().WithUrl(new Uri(source.Address,"hub"),options=>
         {
             options.Cookies=source.SessionCookies;
@@ -23,18 +25,44 @@ public sealed partial class MessengerPage
             options.WebSocketConfiguration=socket=>socket.RemoteCertificateValidationCallback=(_,certificate,_,errors)=>CertificatePins.Validate(source.Address,certificate,errors);
         }).WithAutomaticReconnect().Build();
         desktopHub=hub;
-        hub.On<JsonElement>("NewMessage",_=>MainThread.BeginInvokeOnMainThread(()=>{if(desktopOwner==source)desktopStatus.Text="새 메시지가 도착했습니다";}));
+        hub.On<JsonElement>("NewMessage",message=>MainThread.BeginInvokeOnMainThread(()=>{if(desktopOwner!=source)return;desktopStatus.Text="새 메시지가 도착했습니다";_=SynchronizeDesktopArchive(source);}));
+        hub.On<JsonElement>("MessageRecalled",id=>MainThread.BeginInvokeOnMainThread(()=>{if(desktopOwner==source&&desktopArchive?.Owner==source&&id.ValueKind==JsonValueKind.String)try{desktopArchive.Remove(id.GetString()!);}catch(Exception error)when(error is IOException or UnauthorizedAccessException or InvalidOperationException){}}));
         hub.Reconnecting+=_=>{MainThread.BeginInvokeOnMainThread(()=>desktopStatus.Text="다시 연결 중");return Task.CompletedTask;};
-        hub.Reconnected+=_=>{MainThread.BeginInvokeOnMainThread(()=>desktopStatus.Text="온라인");return Task.CompletedTask;};
+        hub.Reconnected+=connection=>{MainThread.BeginInvokeOnMainThread(()=>{desktopStatus.Text="온라인";_=SynchronizeDesktopArchive(source);});return Task.CompletedTask;};
         hub.Closed+=_=>{MainThread.BeginInvokeOnMainThread(()=>{if(desktopHub==hub){desktopHub=null;desktopOwner=null;desktopStatus.Text="연결 끊김 · 받은함 새로고침";}});return Task.CompletedTask;};
-        try{await hub.StartAsync();if(desktopOwner==source)desktopStatus.Text=source.StorageWarning??"온라인";}
+        try{await hub.StartAsync();if(desktopOwner==source){desktopStatus.Text=source.StorageWarning??"온라인";_=SynchronizeDesktopArchive(source);}}
         catch(Exception error)when(error is HttpRequestException or InvalidOperationException or OperationCanceledException)
         {if(desktopHub==hub){desktopHub=null;desktopOwner=null;desktopStatus.Text="실시간 연결 실패 · 받은함으로 재시도";}await hub.DisposeAsync();}
     }
     void StopDesktopPresence()
     {
-        var hub=desktopHub;desktopHub=null;desktopOwner=null;desktopAway=false;desktopStatus.Text="로그인 필요";
+        var hub=desktopHub;desktopHub=null;desktopOwner=null;desktopArchive=null;desktopAway=false;desktopStatus.Text="로그인 필요";
         if(hub is not null)_=DisposeDesktopHub(hub);
+    }
+    MessageArchive? desktopArchive;
+    const string DesktopArchiveFailed="이 Mac에 메시지를 저장하지 못했습니다. 디스크 공간과 권한을 확인하세요.";
+    // Message bodies live on the PCs: this Mac keeps its own sealed copy and tells the server once it has one.
+    async Task<bool> OpenDesktopArchive(MessengerApi source)
+    {
+        if(desktopArchive?.Owner==source)return true;
+        MessageArchive opened;
+        try{opened=await MessageArchive.Open(source);}
+        catch(Exception error)when(error is not OperationCanceledException){if(api==source)desktopStatus.Text="이 Mac의 메시지 보관함을 열지 못했습니다. 메시지 본문은 서버에 최대 30일 남습니다.";return api==source;}
+        if(api!=source)return false;desktopArchive=opened;return true;
+    }
+    async Task SynchronizeDesktopArchive(MessengerApi source)
+    {
+        if(!await OpenDesktopArchive(source)||desktopArchive?.Owner!=source)return;
+        try{await desktopArchive.Synchronize();}
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException or CryptographicException){if(api==source)desktopStatus.Text=DesktopArchiveFailed;}
+        // The next message, reconnection or mailbox refresh tries again from the saved position.
+        catch(Exception error)when(error is HttpRequestException or InvalidOperationException or OperationCanceledException or JsonException or KeyNotFoundException){}
+    }
+    JsonElement DesktopCopy(MessengerApi source,JsonElement value)
+    {
+        if(desktopArchive?.Owner!=source)return value;
+        try{return desktopArchive.Merge(value);}
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException or CryptographicException){desktopStatus.Text=DesktopArchiveFailed;return value;}
     }
     static async Task DisposeDesktopHub(HubConnection hub){try{await hub.DisposeAsync();}catch(Exception error)when(error is HttpRequestException or OperationCanceledException or InvalidOperationException){}}
     static async Task<JsonElement> MacSend(MessengerApi source,string path,JsonObject payload,HttpMethod? method=null)

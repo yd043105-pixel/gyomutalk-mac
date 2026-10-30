@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.AspNetCore.SignalR.Client;
 
@@ -63,6 +64,8 @@ public sealed partial class MessengerPage
     async Task DesktopMailbox(string query="")
     {
         var source=api!;var version=epoch;var rows=await source.Get("api/messages?box="+view+"&offset="+offset+"&q="+Uri.EscapeDataString(query));if(!Current(source,version))return;
+        _=SynchronizeDesktopArchive(source);
+        var found=rows.EnumerateArray().ToList();if(offset==0&&query.Trim().Length>0)found.AddRange(LocalMatches(source,query.Trim()).Where(m=>found.All(r=>r.GetProperty("id").GetString()!=m.GetProperty("id").GetString())));
         var root=new Grid{RowDefinitions={new(GridLength.Auto),new(GridLength.Star)},BackgroundColor=Colors.White};
         var toolbar=new Grid{Padding=new Thickness(22,14),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto),new(GridLength.Auto)},ColumnSpacing=12,BackgroundColor=Color.FromArgb("#F8FAFD")};
         var heading=new VerticalStackLayout{Spacing=3};heading.Add(Text(view=="sent"?"보낸 메시지":view=="unread"?"미확인 메시지":"받은 메시지",19,true));var meta=Text(schoolName+" · "+source.Session.GetProperty("user").GetProperty("name").GetString(),11);meta.TextColor=Muted;heading.Add(meta);toolbar.Add(heading);
@@ -80,18 +83,39 @@ public sealed partial class MessengerPage
             await OfficeDetail(id);if(!Current(source,version))return;
             var content=(VerticalStackLayout)selected.Content;((Button)content.Children[0]).FontAttributes=FontAttributes.None;((Label)content.Children[content.Children.Count-1]).Text=Date(createdAt);
         }
-        foreach(var message in rows.EnumerateArray())
+        foreach(var message in found)
         {
-            var id=message.GetProperty("id").GetString()!;var label=message.GetProperty("title").GetString()??"";var card=new VerticalStackLayout{Spacing=4};var border=DesktopPanel(card,12,Colors.Transparent);border.StrokeThickness=0;
+            var id=message.GetProperty("id").GetString()!;var label=DesktopTitle(source,message);var card=new VerticalStackLayout{Spacing=4};var border=DesktopPanel(card,12,Colors.Transparent);border.StrokeThickness=0;
             var createdAt=message.GetProperty("createdAt").GetInt64();
             var subject=DesktopButton(label,()=>OpenMessage(id,border,createdAt));subject.ClassId="school-story";subject.AutomationId="mac-message-"+id;subject.BackgroundColor=Colors.Transparent;subject.BorderWidth=0;subject.Padding=0;subject.FontSize=16;subject.FontAttributes=message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent"?FontAttributes.Bold:FontAttributes.None;subject.MinimumHeightRequest=28;subject.HorizontalOptions=LayoutOptions.Fill;subject.ContentLayout=new(Button.ButtonContentLayout.ImagePosition.Left,0);card.Add(subject);
             var author=Text(message.GetProperty("senderName").GetString()??"",11);author.TextColor=Muted;card.Add(author);var stamp=Text(Date(message.GetProperty("createdAt").GetInt64())+(message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent"?" · 미확인":""),10);stamp.TextColor=Muted;card.Add(stamp);messages.Add(border);choices.Add((border,id));
         }
-        if(rows.GetArrayLength()==0){var noMessages=Text("표시할 메시지가 없습니다",12);noMessages.TextColor=Muted;messages.Add(noMessages);}
+        if(found.Count==0){var noMessages=Text("표시할 메시지가 없습니다",12);noMessages.TextColor=Muted;messages.Add(noMessages);}
         list.Add(new ScrollView{Content=messages},0,2);
         var more=DesktopButton(rows.GetArrayLength()==100?"다음 메시지":"새로고침",async()=>{if(rows.GetArrayLength()==100)offset+=100;await DesktopMailbox(query);});more.FontSize=13;more.MinimumHeightRequest=36;list.Add(more,0,3);panes.Add(list);desktopContent.Content=root;
         foreach(var pair in desktopMenu){pair.Value.BackgroundColor=pair.Key==view?Pale:Colors.Transparent;pair.Value.TextColor=pair.Key==view?Blue:Muted;}
-        if(rows.GetArrayLength()>0)await OpenMessage(choices[0].Id,choices[0].Row,rows[0].GetProperty("createdAt").GetInt64());
+        if(found.Count>0)await OpenMessage(choices[0].Id,choices[0].Row,found[0].GetProperty("createdAt").GetInt64());
+    }
+    // The server drops a body once every PC saved it, so untitled messages and search fall back to this Mac's copies.
+    string DesktopTitle(MessengerApi source,JsonElement row)
+    {
+        if(row.GetProperty("title").GetString() is{Length:>0} title)return title;
+        if(row.TryGetProperty("preview",out var preview)&&preview.GetString() is{Length:>0} text)return text;
+        try{return desktopArchive?.Owner==source&&desktopArchive.Load(row.GetProperty("id").GetString()!) is{} copy?SchoolMessenger.Shared.MessageText.Excerpt(copy.GetProperty("message").GetProperty("body").GetString()):"";}
+        catch(InvalidOperationException){return "";}
+    }
+    IEnumerable<JsonElement> LocalMatches(MessengerApi source,string query)
+    {
+        if(desktopArchive?.Owner!=source)yield break;
+        var me=source.Session.GetProperty("user").GetProperty("id").GetString();
+        foreach(var copy in desktopArchive.Search(query))
+        {
+            var message=copy.GetProperty("message");var mine=copy.GetProperty("recipients").EnumerateArray().Where(r=>r.GetProperty("id").GetString()==me).Select(r=>(JsonElement?)r).FirstOrDefault();
+            var fits=view switch{"sent"=>message.GetProperty("senderId").GetString()==me,"unread"=>mine?.GetProperty("readAt").ValueKind==JsonValueKind.Null,_=>mine is not null};
+            if(!fits)continue;
+            var row=new JsonObject{["id"]=message.GetProperty("id").GetString(),["title"]=message.GetProperty("title").GetString(),["preview"]=SchoolMessenger.Shared.MessageText.Excerpt(message.GetProperty("body").GetString()),["createdAt"]=message.GetProperty("createdAt").GetInt64(),["senderName"]=message.GetProperty("senderName").GetString(),["readAt"]=mine?.GetProperty("readAt").ValueKind==JsonValueKind.Number?mine.Value.GetProperty("readAt").GetInt64():null};
+            using var document=JsonDocument.Parse(row.ToJsonString());yield return document.RootElement.Clone();
+        }
     }
     partial void DisplayDesktopDetail(ContentPage page,ref bool handled)
     {

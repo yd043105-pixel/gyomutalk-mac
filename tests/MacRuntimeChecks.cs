@@ -20,6 +20,7 @@ public sealed partial class MessengerPage
     internal Task MacVerifyCompose()=>MacCompose();
     internal Task MacVerifyDetail(string id)=>OfficeDetail(id);
     internal ContentView? MacVerifyReader=>desktopReader;
+    internal async Task<MessageArchive> MacVerifyArchive(){var source=api!;await SynchronizeDesktopArchive(source);return desktopArchive?.Owner==source?desktopArchive:throw new InvalidOperationException("Mac message archive did not open");}
     internal Task MacVerifyWork(string mode,string? id=null)=>MacWork(mode,id);
     internal View? MacVerifyContent=>desktopContent.Content;
     internal Grid? MacVerifySubmissionTargets=>macSubmissionTargets;
@@ -106,6 +107,12 @@ internal static class MacRuntimeChecks
             await Page.MacVerifyDetail(sent.GetProperty("id").GetString()!);
             Check(Page.MacVerifyReader?.Content is Grid details&&details.RowDefinitions.Count==2&&details.Children.OfType<Button>().Any(b=>b.Text=="답장"),"Reply remains in fixed footer outside the message scroll area");
             await Capture("mac-message-detail.png");
+            var sentId=sent.GetProperty("id").GetString()!;var archive=await Page.MacVerifyArchive();
+            var dropped=await Page.MacVerifyApi.Get("api/messages/"+sentId+"?peek=true");
+            Check(MessageArchive.Purged(dropped)&&dropped.GetProperty("message").GetProperty("body").GetString()=="","Server drops the body once this Mac confirmed its sealed copy");
+            await Page.MacVerifyDetail(sentId);await Wait(()=>Page.MacVerifyReady);
+            Check(Views(Page.MacVerifyReader!).OfType<Label>().Any(l=>l.Text=="가상 학교 데이터로 Mac 메시지 작성과 수신 연결을 검사합니다."),"Mac reader shows the body from its own copy after the server dropped it");
+            archive.Verify(archive.Merge(dropped));Check(true,"Mac message copy is sealed on disk, restores a dropped body and is not saved again after recall");
             // File collection and to-dos use invented staff on the isolated loopback server only.
             var office=fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost");var password=fixture.GetProperty("password").GetString()!;var admin=Page.MacVerifyApi;var staff=new List<string>();
             for(var i=1;i<=6;i++)staff.Add((await admin.Send("api/admin/users",content:Json(new JsonObject{["username"]="mac.work."+i,["name"]="가상교사"+i.ToString("00",CultureInfo.InvariantCulture),["department"]="업무검사",["password"]=password,["isAdmin"]=false,["canBroadcast"]=false}))).GetProperty("id").GetString()!);

@@ -159,10 +159,15 @@ public sealed class MessengerApi : IDisposable
         if(response.IsSuccessStatusCode)return;if(response.StatusCode==HttpStatusCode.Unauthorized){DeleteShares(ShareFolder());SecureStorage.Default.Remove(key);Session=default;Invalidated?.Invoke();}
         string message=(int)response.StatusCode switch{401=>"로그인이 만료되었습니다. 다시 로그인하세요.",403=>"승인된 계정과 담당 학급 권한을 확인하세요.",429=>"요청이 많습니다. 잠시 후 다시 시도하세요.",_=>"서버 연결·학교 접속 권한을 확인하세요."};
         try{var data=await response.Content.ReadFromJsonAsync(MobileJson.Default.JsonElement);if(data.TryGetProperty("error",out var error))message=error.GetString()??message;}catch(JsonException){}
-        throw new InvalidOperationException(message);
+        throw new MessengerApiRefusal((int)response.StatusCode,message);
     }
     static async Task<JsonElement> Read(HttpResponseMessage response){var text=await response.Content.ReadAsStringAsync();if(string.IsNullOrEmpty(text))return default;using var document=JsonDocument.Parse(text);return document.RootElement.Clone();}
     public void Dispose(){DeleteShares(ShareFolder());http.Dispose();}
+}
+// The server answered and refused; callers that retry later can tell this apart from a network failure.
+public sealed class MessengerApiRefusal(int status,string message):InvalidOperationException(message)
+{
+    public int Status{get;}=status;
 }
 internal record MobileCookie(string Name,string Value,DateTime Expires);
 internal record MobileLogin(string Username,string Password,bool RememberLogin);

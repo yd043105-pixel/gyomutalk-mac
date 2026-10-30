@@ -52,7 +52,6 @@ public sealed partial class MessengerPage : ContentPage
             restored=true;var mode=Preferences.Default.Get("mode",0);var address=Preferences.Default.Get("address-"+mode,"");
             if(address.Length>0)await Run(()=>ConfirmingCertificate(address,async()=>
             {
-                var school=ReadSelectedSchool(mode);if(school is not null)await SchoolMessenger.Shared.SchoolDirectory.Verify(school,mode==1?"office":"announcements",default,CertificatePins.Handler(address));
                 var source=new MessengerApi(address,mode==1);await source.Restore();
                 if(!source.Remember){source.Dispose();return;}
                 api=source;source.Invalidated+=()=>{if(api==source)Invalidate();};await source.Refresh();
@@ -109,9 +108,14 @@ public sealed partial class MessengerPage : ContentPage
     async Task OfficeDetail(string id)
     {
         var source=api!;var version=epoch;var value=await source.Get("api/messages/"+id);if(!Current(source,version))return;
-        var page=Detail(value.GetProperty("message").GetProperty("title").GetString()!,value.GetProperty("message").GetProperty("body").GetString()!,value.GetProperty("attachments"),source);
+#if MACCATALYST
+        value=DesktopCopy(source,value);
+#endif
         var message=value.GetProperty("message");
-        if(message.TryGetProperty("format",out var raw)&&raw.ValueKind==JsonValueKind.Object)
+        // Once the sender's and every recipient's PC saved the message, the server keeps only its title and receipts.
+        var purged=message.TryGetProperty("purged",out var gone)&&gone.ValueKind==JsonValueKind.True;
+        var page=Detail(message.GetProperty("title").GetString()!,purged?PurgedBody:message.GetProperty("body").GetString()!,value.GetProperty("attachments"),source);
+        if(!purged&&message.TryGetProperty("format",out var raw)&&raw.ValueKind==JsonValueKind.Object)
         {
             var format=raw.Deserialize(MobileJson.Default.MessageFormat);
             var body=message.GetProperty("body").GetString()!;
@@ -135,6 +139,7 @@ public sealed partial class MessengerPage : ContentPage
         if(value.GetProperty("recipients").EnumerateArray().Any(r=>r.GetProperty("id").GetString()==userId))await source.Send("api/messages/"+id+"/read");
         if(!Current(source,version))return;var handled=false;DisplayDesktopDetail(page,ref handled);if(!handled)await Navigation.PushAsync(page);
     }
+    const string PurgedBody="이 메시지 본문은 받은 PC에만 저장됩니다. 이 기기에는 사본이 없습니다.";
     partial void ConfigureDesktopDetail(ContentPage page,JsonElement value,MessengerApi source);
     partial void DisplayDesktopDetail(ContentPage page,ref bool handled);
     ContentPage Detail(string title,string text,JsonElement files,MessengerApi source,bool inline=false)

@@ -47,9 +47,4 @@ public static class CertificatePins
         lock(gate){Preferences.Default.Remove(Store(Key(uri)));pending.Remove(Key(uri));}
     }
     public static Func<HttpRequestMessage,X509Certificate2?,X509Chain?,SslPolicyErrors,bool> Callback(Uri address)=>(_,certificate,_,errors)=>Validate(address,certificate,errors);
-    public static HttpClientHandler Handler(string address)
-    {
-        var uri=Parse(address)??throw new InvalidOperationException("학교 서버 주소를 확인하세요.");
-        return new HttpClientHandler{AllowAutoRedirect=false,UseCookies=false,ServerCertificateCustomValidationCallback=Callback(uri)};
-    }
 }

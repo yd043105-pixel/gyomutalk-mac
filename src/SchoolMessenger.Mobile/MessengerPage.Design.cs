@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Maui.Controls.Shapes;
-using SchoolMessenger.Shared;
 
 namespace SchoolMessenger.Mobile;
 
@@ -67,26 +66,10 @@ public sealed partial class MessengerPage
 #elif FAMILY_APP
         mode.SelectedIndex=0;modeCard.IsVisible=false;
 #endif
-        SchoolDirectory.Entry? selected=ReadSelectedSchool(mode.SelectedIndex);
-        var selection=Text(selected?.Label??"학교를 검색해 선택하세요",14,true);body.Add(Card(selection));
-        var address=Input("관리자 안내 주소 · 기존 설치/시험용",value:Preferences.Default.Get("address-"+mode.SelectedIndex,""));address.Keyboard=Keyboard.Url;
-        var addressField=(View)body.Children.Last();addressField.IsVisible=false;
-        System.Action clearSchoolLoginFields=()=>{};
-        async Task CheckSchool(){if(selected is not null)await SchoolDirectory.Verify(selected,mode.SelectedIndex==1?"office":"announcements",default,CertificatePins.Handler(selected.Address(mode.SelectedIndex==1?"office":"announcements")));else if(string.IsNullOrWhiteSpace(address.Text))throw new InvalidOperationException("학교를 먼저 검색해 선택하세요.");}
-        var choose=MakeAction("학교 검색",async()=>
-        {
-            var school=await ChooseSchool(mode.SelectedIndex==1?"office":"announcements");if(school is null)return;
-            var next=school.Address(mode.SelectedIndex==1?"office":"announcements");
-            if(selected?.Id!=school.Id||address.Text?.TrimEnd('/')!=next.TrimEnd('/'))
-            {
-                MessengerApi.ForgetRemembered(address.Text??"",mode.SelectedIndex==1);api?.Dispose();api=null;epoch++;
-                clearSchoolLoginFields();
-            }
-            selected=school;address.Text=next;selection.Text=school.Label;SaveSelectedSchool(school,mode.SelectedIndex);
-            Preferences.Default.Set("address-"+mode.SelectedIndex,next);Preferences.Default.Set("mode",mode.SelectedIndex);
-        },true);choose.AutomationId="school-search";body.Add(choose);
-        var advanced=MakeAction("연결 도움 · 관리자 안내를 받은 경우",()=>{addressField.IsVisible=!addressField.IsVisible;return Task.CompletedTask;});advanced.FontSize=11;body.Add(advanced);
-        mode.SelectedIndexChanged+=(_,_)=>{selected=ReadSelectedSchool(mode.SelectedIndex);address.Text=Preferences.Default.Get("address-"+mode.SelectedIndex,"");selection.Text=selected?.Label??"학교를 검색해 선택하세요";help.Text=mode.SelectedIndex==1?"교직원 업무 메시지는 교내망 또는\n학교 VPN에 연결한 뒤 확인하세요.":"가정통신문부터 시간표까지,\n필요한 학교 소식을 한곳에서 확인하세요.";};
+        var address=Input("학교 서버 주소",value:Preferences.Default.Get("address-"+mode.SelectedIndex,""));address.Keyboard=Keyboard.Url;address.Placeholder="https://192.168.0.10:5443";address.AutomationId="school-address";
+        var addressHint=Text("관리자 프로그램에 표시된 접속 주소를 입력하세요. 처음 연결할 때 서버 PC에 표시된 연결 확인 코드와 비교합니다.",11);addressHint.TextColor=Muted;body.Add(addressHint);
+        System.Action clearSchoolLoginFields=()=>{};var shownAddress=address.Text??"";
+        mode.SelectedIndexChanged+=(_,_)=>{shownAddress=Preferences.Default.Get("address-"+mode.SelectedIndex,"");address.Text=shownAddress;help.Text=mode.SelectedIndex==1?"교직원 업무 메시지는 교내망 또는\n학교 VPN에 연결한 뒤 확인하세요.":"가정통신문부터 시간표까지,\n필요한 학교 소식을 한곳에서 확인하세요.";};
         var username=Input("아이디");username.Keyboard=Keyboard.Text;var password=Input("비밀번호",true);
         var remember=new Switch{IsToggled=true};var rememberRow=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)}};
 #if MACCATALYST
@@ -95,16 +78,16 @@ public sealed partial class MessengerPage
         var rememberLabel=Text("자동 로그인",13);rememberLabel.VerticalOptions=LayoutOptions.Center;rememberRow.Add(rememberLabel);rememberRow.Add(remember,1);body.Add(rememberRow);
         SemanticProperties.SetDescription(remember,"자동 로그인. 비밀번호는 저장하지 않습니다.");
         clearSchoolLoginFields=()=>{password.Text="";remember.IsToggled=false;};
-        address.TextChanged+=(_,_)=>{if(selected is null||address.Text?.TrimEnd('/')==selected.Address(mode.SelectedIndex==1?"office":"announcements").TrimEnd('/'))return;MessengerApi.ForgetRemembered(selected.Address(mode.SelectedIndex==1?"office":"announcements"),mode.SelectedIndex==1);selected=null;SaveSelectedSchool(null,mode.SelectedIndex);selection.Text="학교를 검색해 선택하세요";clearSchoolLoginFields();};
+        // Each school keeps its own sign-in, so moving to another address forgets the remembered one.
+        address.TextChanged+=(_,_)=>{if((address.Text??"").Trim().TrimEnd('/')==shownAddress.Trim().TrimEnd('/'))return;MessengerApi.ForgetRemembered(shownAddress,mode.SelectedIndex==1);shownAddress=address.Text??"";clearSchoolLoginFields();};
         async Task Connect(bool restore)
         {
             // The password is read once: a first connection to a self-issued school certificate retries after the code check.
-            var secret=password.Text??"";
+            var secret=password.Text??"";RequireServerAddress(address.Text);
             try
             {
                 await ConfirmingCertificate(address.Text??"",async()=>
                 {
-                    await CheckSchool();
                     api?.Dispose();epoch++;var source=new MessengerApi(address.Text??"",mode.SelectedIndex==1);api=source;source.Invalidated+=()=>{if(api==source)Invalidate();};
                     Preferences.Default.Set("mode",mode.SelectedIndex);Preferences.Default.Set("address-"+mode.SelectedIndex,source.Address.AbsoluteUri);
                     if(restore){await source.Restore();await source.Refresh();if(source.Session.GetProperty("user").ValueKind==JsonValueKind.Null)throw new InvalidOperationException("저장된 로그인이 없습니다. 아이디·비밀번호로 로그인하세요.");}
@@ -117,8 +100,8 @@ public sealed partial class MessengerPage
         Action("로그인",()=>Connect(false),true);
         var restore=Action("저장된 로그인으로 접속",()=>Connect(true));restore.BackgroundColor=Colors.Transparent;restore.TextColor=Muted;restore.FontSize=12;
         var joins=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Star)},ColumnSpacing=8};
-        var signup=MakeAction("학생·학부모 회원가입",async()=>{if(mode.SelectedIndex==1)throw new InvalidOperationException("교직원 계정 신청은 PC 교무실에서 진행하세요.");await ConfirmingCertificate(address.Text??"",CheckSchool);await Signup(address.Text??"");});signup.FontSize=12;
-        var invitation=MakeAction("학교 초대 코드로 가입",async()=>{if(mode.SelectedIndex==1)throw new InvalidOperationException("교직원 계정 신청은 PC 교무실에서 진행하세요.");await ConfirmingCertificate(address.Text??"",CheckSchool);await InviteSignup(address.Text??"");});invitation.FontSize=12;
+        var signup=MakeAction("학생·학부모 회원가입",async()=>{if(mode.SelectedIndex==1)throw new InvalidOperationException("교직원 계정 신청은 PC 교무실에서 진행하세요.");RequireServerAddress(address.Text);await ConfirmingCertificate(address.Text??"",()=>Signup(address.Text??""));});signup.FontSize=12;
+        var invitation=MakeAction("학교 초대 코드로 가입",async()=>{if(mode.SelectedIndex==1)throw new InvalidOperationException("교직원 계정 신청은 PC 교무실에서 진행하세요.");RequireServerAddress(address.Text);await ConfirmingCertificate(address.Text??"",()=>InviteSignup(address.Text??""));});invitation.FontSize=12;
         joins.Add(signup);joins.Add(invitation,1);body.Add(joins);
 #if TEACHER_APP
         joins.IsVisible=false;
