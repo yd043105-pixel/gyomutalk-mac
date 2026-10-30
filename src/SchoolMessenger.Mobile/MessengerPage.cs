@@ -139,7 +139,7 @@ public sealed partial class MessengerPage : ContentPage
         if(value.GetProperty("recipients").EnumerateArray().Any(r=>r.GetProperty("id").GetString()==userId))await source.Send("api/messages/"+id+"/read");
         if(!Current(source,version))return;var handled=false;DisplayDesktopDetail(page,ref handled);if(!handled)await Navigation.PushAsync(page);
     }
-    const string PurgedBody="이 메시지 본문은 받은 PC에만 저장됩니다. 이 기기에는 사본이 없습니다.";
+    const string PurgedBody="이 메시지 본문은 PC 교무톡에 보관되어 있어 이 기기에서는 볼 수 없습니다. PC에서 확인하세요.";
     partial void ConfigureDesktopDetail(ContentPage page,JsonElement value,MessengerApi source);
     partial void DisplayDesktopDetail(ContentPage page,ref bool handled);
     ContentPage Detail(string title,string text,JsonElement files,MessengerApi source,bool inline=false)
