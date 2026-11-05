@@ -31,7 +31,7 @@ public partial class App : Application
 		var window = new Window(new NavigationPage(new MessengerPage()) { BarBackgroundColor = Colors.White, BarTextColor = Color.FromArgb("#17243b") });
 #if MACCATALYST
         window.Title="교무톡";window.Width=1120;window.Height=820;window.MinimumWidth=860;window.MinimumHeight=620;
-        window.Destroying+=(_,_)=>MessengerPage.Active?.StopPhonePresence();
+        window.Destroying+=(_,_)=>MessengerPage.Active?.StopDesktopPresence();
 #else
 		window.Stopped += (_, _) => MessengerPage.Active?.Cover();
 		window.Resumed += async (_, _) => { if (MessengerPage.Active is { } page) await page.Resume(); };
