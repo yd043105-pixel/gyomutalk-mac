@@ -89,7 +89,10 @@ jobs:
           version="$(python3 -c 'import xml.etree.ElementTree as E;print(E.parse("Directory.Build.props").findtext("./PropertyGroup/Version"))')"
           tag="v$version"
           for arch in arm64 x64; do
-            (cd artifacts/trial && sha256sum -c "gyomutalk-mac-$version-macos-$arch.zip.sha256")
+            asset="artifacts/trial/gyomutalk-mac-$version-macos-$arch.zip"
+            expected="$(cut -d' ' -f1 "$asset.sha256")"
+            actual="$(sha256sum "$asset" | cut -d' ' -f1)"
+            [[ "$expected" =~ ^[0-9a-f]{64}$ && "$actual" == "$expected" ]]
           done
           if gh release view "$tag" --json isDraft --jq .isDraft > /dev/null 2>&1; then
             echo 'A release already exists; do not replace its assets.' >&2; exit 1
