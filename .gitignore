@@ -84,3 +84,4 @@ school-evidence/
 *.keychain
 *.keychain-db
 .signing/
+**/retired-app-backups/
