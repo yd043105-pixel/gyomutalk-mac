@@ -85,6 +85,7 @@ internal static class MacRuntimeChecks
             Check(DeviceInfo.Platform==DevicePlatform.MacCatalyst,"Actual native Mac Catalyst process");
             Check(AppInfo.Current.Name=="교무톡"&&AppInfo.Current.VersionString==typeof(App).Assembly.GetName().Version!.ToString(3),"Mac brand and configured release version");
             Check(Page.Content is Grid grid&&grid.ColumnDefinitions.Count==2,"Native desktop sidebar and separate content column");await Capture("mac-login.png");
+            Check(!Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId is "mac-nav-notices" or "mac-nav-counseling" or "mac-nav-electives"),"App-only notice, counseling and elective menus are absent");
             Check(Views(Page.Content).OfType<Button>().Where(b=>!string.IsNullOrEmpty(b.Text)).All(b=>b.Handler?.PlatformView is UIButton native&&!string.IsNullOrEmpty(native.CurrentTitle??native.Configuration?.Title)),"Native Mac buttons retain their visible title bindings");
             CertificatePinChecks();
             await Page.MacVerifyLogin(fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost"),fixture.GetProperty("password").GetString()!);

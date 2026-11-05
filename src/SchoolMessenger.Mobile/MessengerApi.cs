@@ -23,6 +23,7 @@ public sealed class MessengerApi : IDisposable
     string csrf="";
     public MessengerApi(string address,bool office)
     {
+        if(!office)throw new InvalidOperationException("교무톡은 교직원 PC용 서버에만 연결합니다.");
         if(!Uri.TryCreate(address.TrimEnd('/')+"/",UriKind.Absolute,out var uri)||uri.AbsolutePath!="/"||uri.UserInfo.Length>0||uri.Query.Length>0||uri.Fragment.Length>0)throw new InvalidOperationException("학교에서 안내한 서버 기본 주소를 입력하세요.");
         var localDebug=false;
 #if DEBUG
@@ -172,32 +173,18 @@ public sealed class MessengerApiRefusal(int status,string message):InvalidOperat
 internal record MobileCookie(string Name,string Value,DateTime Expires);
 internal record MobileLogin(string Username,string Password,bool RememberLogin);
 internal record MobilePasswordChange(string CurrentPassword,string NewPassword);
-internal record MobileRegistration(string? Code,string? Username,string? Password,RegistrationAcceptance? Agreement=null);
-internal record MobileSignup(string? Name,string? Username,string? Password,string Role,string? ClassId,int? StudentNumber,RegistrationAcceptance? Agreement=null);
-internal record MobileFamilyCode(string? Code);
 internal record MobileEmpty;
 [JsonSourceGenerationOptions(PropertyNamingPolicy=JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(MobileCookie[]))]
 [JsonSerializable(typeof(MobileLogin))]
 [JsonSerializable(typeof(MobilePasswordChange))]
-[JsonSerializable(typeof(MobileRegistration))]
-[JsonSerializable(typeof(MobileSignup))]
-[JsonSerializable(typeof(MobileFamilyCode))]
 [JsonSerializable(typeof(MobileEmpty))]
-[JsonSerializable(typeof(AnnouncementRequest))]
 [JsonSerializable(typeof(StaffActivation))]
 [JsonSerializable(typeof(OfficeEventRequest))]
 [JsonSerializable(typeof(OfficeRoomRequest))]
 [JsonSerializable(typeof(OfficeBookingRequest))]
 [JsonSerializable(typeof(OfficeRevision))]
-[JsonSerializable(typeof(CounselingOpen))]
-[JsonSerializable(typeof(CounselingReserve))]
-[JsonSerializable(typeof(CounselingView))]
 [JsonSerializable(typeof(JsonElement))]
 [JsonSerializable(typeof(MessageFormat))]
 [JsonSerializable(typeof(SchoolMessenger.Contracts.FeedbackRequest))]
-[JsonSerializable(typeof(ElectiveRound))]
-[JsonSerializable(typeof(ElectiveRound[]))]
-[JsonSerializable(typeof(ElectiveApplicationRequest))]
-[JsonSerializable(typeof(ElectiveCancellation))]
 internal partial class MobileJson:JsonSerializerContext;

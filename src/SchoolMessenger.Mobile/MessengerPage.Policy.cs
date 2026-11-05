@@ -36,26 +36,6 @@ public sealed partial class MessengerPage
             return new(policy.GetProperty("revision").GetString(),choices.Where(c=>c.Value.IsChecked).Select(c=>c.Key).ToArray());
         };
     }
-    async Task InviteSignup(string address)
-    {
-        var source=new MessengerApi(address,false);
-        try
-        {
-            await source.Refresh();var policy=await source.Get("api/registration/policy");
-            var page=new ContentPage{Title="학교 초대로 가입",BackgroundColor=BackgroundColor};var stack=new VerticalStackLayout{Padding=24,Spacing=16};page.Content=new ScrollView{Content=stack};
-            stack.Add(Text("이름·역할·자녀는 학교에서 확인합니다.",15));var code=new Entry{Placeholder="학교 초대 코드",MaxLength=128};var id=new Entry{Placeholder="아이디 (3~32자)",MaxLength=32};var password=new Entry{Placeholder="비밀번호 (12~128자)",IsPassword=true,MaxLength=128};
-            stack.Add(code);stack.Add(id);stack.Add(password);var agreement=AddPolicies(stack,policy);var error=Text("",13);stack.Add(error);var join=new Button{Text="계정 등록",IsEnabled=policy.GetProperty("canRegister").GetBoolean(),BackgroundColor=Blue,TextColor=Colors.White};
-            var sending=false;join.Clicked+=async(_,_)=>
-            {
-                if(sending)return;sending=true;stack.IsEnabled=false;
-                try{await source.Send("api/register",new MobileRegistration(code.Text,id.Text,password.Text,agreement()));password.Text="";await Navigation.PopAsync();feedback.Text="계정 등록 완료. 로그인하세요.";}
-                catch(Exception e){password.Text="";error.Text=e.Message;}
-                finally{sending=false;stack.IsEnabled=true;}
-            };
-            stack.Add(join);page.NavigatedFrom+=(_,_)=>{if(!Navigation.NavigationStack.Contains(page))source.Dispose();};await Navigation.PushAsync(page);
-        }
-        catch{source.Dispose();throw;}
-    }
     async Task PolicyMenu()
     {
         var policy=await api!.Get("api/registration/policy");var page=new ContentPage{Title="약관·개인정보 안내",BackgroundColor=BackgroundColor};var stack=new VerticalStackLayout{Padding=24,Spacing=16};page.Content=new ScrollView{Content=stack};
