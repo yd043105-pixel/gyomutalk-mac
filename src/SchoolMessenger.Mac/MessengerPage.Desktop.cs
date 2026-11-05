@@ -34,7 +34,7 @@ public sealed partial class MessengerPage
         catch(Exception error)when(error is HttpRequestException or InvalidOperationException or OperationCanceledException)
         {if(desktopHub==hub){desktopHub=null;desktopOwner=null;desktopStatus.Text="실시간 연결 실패 · 받은함으로 재시도";}await hub.DisposeAsync();}
     }
-    void StopDesktopPresence()
+    internal void StopDesktopPresence()
     {
         var hub=desktopHub;desktopHub=null;desktopOwner=null;desktopArchive=null;desktopAway=false;desktopStatus.Text="로그인 필요";
         if(hub is not null)_=DisposeDesktopHub(hub);

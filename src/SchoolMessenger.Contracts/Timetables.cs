@@ -1,5 +1,7 @@
 namespace SchoolMessenger.Contracts;
 
+public sealed record SchoolClass(string Id,string Name,int Grade);
+
 public record TimetableRawCell(string ClassKey,int Grade,int ClassNumber,int Day,int Period,string Subject,string Teacher,string Address);
 public record TimetableWorkbookData(string Kind,int Year,int Semester,string? Date,TimetableRawCell[] Cells);
 public record TimetableLink(string Source,string Id);
