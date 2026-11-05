@@ -93,7 +93,7 @@ public sealed partial class MessengerPage : ContentPage
         if(updateNoticeOpen||(!manual&&updateNoticeOffered))return;
         try
         {
-            var notice=SchoolMessenger.Shared.ReleaseNotice.Load("mobile");
+            var notice=SchoolMessenger.Shared.ReleaseNotice.Load("desktop");
             var confirmed=Preferences.Default.Get("update-confirmed-sequence",0);
             if(!manual&&!notice.ShouldShow(confirmed))return;
             updateNoticeOffered=true;

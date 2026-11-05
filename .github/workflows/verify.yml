@@ -6,6 +6,11 @@ on:
     branches: [main]
   workflow_call:
   workflow_dispatch:
+    inputs:
+      publish_trial:
+        description: Publish verified trial ZIPs as a prerelease without an update feed
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -63,3 +68,32 @@ jobs:
           path: artifacts/mac/
           retention-days: 7
           if-no-files-found: error
+  publish-trial:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_trial }}
+    needs: mac
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gyomutalk-mac-trial
+          path: artifacts/trial
+      - name: Publish native-verified trial packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import xml.etree.ElementTree as E;print(E.parse("Directory.Build.props").findtext("./PropertyGroup/Version"))')"
+          tag="v$version"
+          for arch in arm64 x64; do
+            (cd artifacts/trial && sha256sum -c "gyomutalk-mac-$version-macos-$arch.zip.sha256")
+          done
+          if gh release view "$tag" --json isDraft --jq .isDraft > /dev/null 2>&1; then
+            echo 'A release already exists; do not replace its assets.' >&2; exit 1
+          fi
+          gh release create "$tag" --target "$GITHUB_SHA" --draft --prerelease --title "교무톡 Mac $version 시험용" --notes-file "docs/releases/$version.md"
+          gh release upload "$tag" "artifacts/trial/gyomutalk-mac-$version-macos-arm64.zip" "artifacts/trial/gyomutalk-mac-$version-macos-arm64.zip.sha256" "artifacts/trial/gyomutalk-mac-$version-macos-x64.zip" "artifacts/trial/gyomutalk-mac-$version-macos-x64.zip.sha256" artifacts/trial/mac-results.json
+          gh release edit "$tag" --draft=false --prerelease --latest=false
