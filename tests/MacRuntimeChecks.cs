@@ -27,6 +27,7 @@ public sealed partial class MessengerPage
     internal bool MacVerifyConnected=>desktopHub?.State==Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
     internal Task<bool> MacVerifyTimetable()=>Timetable();
     internal Task MacVerifyCompose()=>MacCompose();
+    internal Task MacVerifyPeople()=>MacPeople();
     internal Task MacVerifyDetail(string id)=>OfficeDetail(id);
     internal ContentView? MacVerifyReader=>desktopReader;
     internal async Task<MessageArchive> MacVerifyArchive(){var source=api!;await SynchronizeDesktopArchive(source);return desktopArchive?.Owner==source?desktopArchive:throw new InvalidOperationException("Mac message archive did not open");}
@@ -100,6 +101,30 @@ internal static class MacRuntimeChecks
             await Page.MacVerifyLogin(fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost"),fixture.GetProperty("password").GetString()!);
             Check(Page.MacVerifyApi.ProductCode=="teacher-macos"&&!Page.MacVerifyApi.Remember,"Mac product identity and session kept in memory for ad-hoc verification");
             await Wait(()=>Page.MacVerifyConnected);
+            var rosterSource = Page.MacVerifyApi;
+            var sample = await AddRosterTeacher(rosterSource, "roster.sample", "가상 교사 가");
+            await AddRosterTeacher(rosterSource, "roster.other", "가상 교사 나");
+            using (var classification = Json(new JsonObject { ["grades"] = new JsonArray(1, 2), ["duties"] = new JsonArray("담임", "방송") }))
+                await rosterSource.Send($"api/admin/users/{sample}/roster-classification", content: classification, method: HttpMethod.Put);
+            await Page.MacVerifyPeople();
+            var roster = ((ContentPage)Page.Navigation.NavigationStack.Last()).Content!;
+            var mode = Views(roster).OfType<Picker>().Single();
+            mode.SelectedIndex = 1;
+            Check(Views(roster).OfType<CheckBox>().Count(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택") == 2,
+                "Mac roster shows a teacher in both assigned grades");
+            Views(roster).OfType<CheckBox>().First(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택").IsChecked = true;
+            Check(Views(roster).OfType<CheckBox>().Where(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택").All(box => box.IsChecked),
+                "Mac roster checks duplicate entries for one teacher together");
+            mode.SelectedIndex = 3;
+            Check(!Views(roster).OfType<CheckBox>().Any(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택"),
+                "Mac unclassified roster hides assigned teachers");
+            Views(roster).OfType<CheckBox>().Single(box => SemanticProperties.GetDescription(box) == "가상 교사 나 선택").IsChecked = true;
+            var sendSelection = Views(roster).OfType<Button>().Single(button => button.Text == "선택 2명에게 메시지");
+            ((IButtonController)sendSelection).SendClicked();
+            await Wait(() => Page.Navigation.NavigationStack.LastOrDefault() is ContentPage page && Views(page.Content!).OfType<Label>().Any(label => label.Text == "받는 사람 2명"));
+            Check(true, "Mac roster selection opens the composer with both recipients across views");
+            await Page.Navigation.PopAsync();
+            await Page.Navigation.PopAsync();
             var largePath=Path.Combine(Folder,"대용량 시험.txt");
             try
             {
@@ -193,6 +218,15 @@ internal static class MacRuntimeChecks
             await File.WriteAllTextAsync(report+".tmp",JsonSerializer.Serialize(new{ok=true,passed}));File.Move(report+".tmp",report,true);
         }
         catch(Exception e){await File.WriteAllTextAsync(report+".tmp",JsonSerializer.Serialize(new{ok=false,passed,error=e.ToString()}));File.Move(report+".tmp",report,true);}
+    }
+    static async Task<string> AddRosterTeacher(MessengerApi api, string username, string name)
+    {
+        using var account = Json(new JsonObject
+        {
+            ["username"] = username, ["name"] = name, ["department"] = "검증부", ["password"] = "Test-" + Guid.NewGuid(),
+            ["isAdmin"] = false, ["canBroadcast"] = false
+        });
+        return (await api.Send("api/admin/users", content: account)).GetProperty("id").GetString()!;
     }
 }
 #endif
