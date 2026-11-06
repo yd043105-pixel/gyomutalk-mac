@@ -115,10 +115,10 @@ internal static class MacRuntimeChecks
             using(var url=Foundation.NSUrl.FromFilename(folder))
             using(var provider=new Foundation.NSItemProvider(url,"public.file-url"))
             using(var droppedFolder=await MacAttachmentDrop.Read(provider,SchoolMessenger.Contracts.AttachmentLimits.Message))
-            using(var archive=await Task.Run(()=>SchoolMessenger.Shared.FolderAttachment.Create(droppedFolder.Path,SchoolMessenger.Contracts.AttachmentLimits.Message)))
+            using(var folderZip=await Task.Run(()=>SchoolMessenger.Shared.FolderAttachment.Create(droppedFolder.Path,SchoolMessenger.Contracts.AttachmentLimits.Message)))
             {
-                var attachment=await Page.MacVerifyApi.Upload(new FileResult(archive.Path),false);
-                using var zip=System.IO.Compression.ZipFile.OpenRead(archive.Path);
+                var attachment=await Page.MacVerifyApi.Upload(new FileResult(folderZip.Path),false);
+                using var zip=System.IO.Compression.ZipFile.OpenRead(folderZip.Path);
                 Check(zip.Entries.Any(e=>e.FullName.EndsWith("/빈 폴더/",StringComparison.Ordinal))&&attachment.GetProperty("name").GetString()!.EndsWith(".zip",StringComparison.Ordinal),"A Mac file-URL drop provider opens a folder and uploads a ZIP with its empty subfolders");
                 await Page.MacVerifyApi.Send("api/attachments/"+attachment.GetProperty("id").GetString(),method:HttpMethod.Delete);
             }

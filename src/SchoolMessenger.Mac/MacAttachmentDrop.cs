@@ -45,9 +45,15 @@ sealed class MacAttachmentDrop(Func<bool> available,Func<NSItemProvider[],Task> 
         var result=new TaskCompletionSource<(NSUrl,bool)>(TaskCreationOptions.RunContinuationsAsynchronously);
         provider.LoadItem(FileUrl,null,(item,error)=>
         {
-            if(error is null&&item is NSUrl {IsFileUrl:true,Path:not null} url)
+            try
+            {
+                var url=item as NSUrl;
+                if(url is null&&item is NSData data&&data.Length<=65536)url=NSUrl.CreateWithDataRepresentation(data,null);
+                if(error is not null||url is not {IsFileUrl:true,Path:not null})
+                    throw new IOException(error?.LocalizedDescription??"Finder에서 선택한 파일이나 폴더를 읽을 수 없습니다.");
                 result.TrySetResult((url,url.StartAccessingSecurityScopedResource()));
-            else result.TrySetException(new IOException(error?.LocalizedDescription??"Finder에서 선택한 파일이나 폴더를 읽을 수 없습니다."));
+            }
+            catch(Exception failure){result.TrySetException(failure);}
         });
         return result.Task;
     }
