@@ -100,6 +100,16 @@ internal static class MacRuntimeChecks
             await Page.MacVerifyLogin(fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost"),fixture.GetProperty("password").GetString()!);
             Check(Page.MacVerifyApi.ProductCode=="teacher-macos"&&!Page.MacVerifyApi.Remember,"Mac product identity and session kept in memory for ad-hoc verification");
             await Wait(()=>Page.MacVerifyConnected);
+            var largePath=Path.Combine(Folder,"대용량 시험.txt");
+            try
+            {
+                const long largeSize=101L*1024*1024;
+                using(var synthetic=File.Create(largePath))synthetic.SetLength(largeSize);
+                var uploaded=await Page.MacVerifyApi.Upload(new FileResult(largePath),false);
+                Check(uploaded.GetProperty("size").GetInt64()==largeSize,"Mac streams an attachment beyond the old 100 MiB limit");
+                await Page.MacVerifyApi.Send("api/attachments/"+uploaded.GetProperty("id").GetString(),method:HttpMethod.Delete);
+            }
+            finally{File.Delete(largePath);}
             var timetable=Views(Page.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-nav-timetable");
             Check(timetable.IsVisible&&await Page.MacVerifyTimetable(),"The enabled timetable opens from the desktop workspace");
             await Page.MacVerifyApi.Send("api/admin/timetable-feature",content:Json(new JsonObject{["enabled"]=false}));

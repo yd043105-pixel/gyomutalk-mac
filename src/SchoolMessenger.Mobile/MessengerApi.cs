@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SchoolMessenger.Contracts;
+using SchoolMessenger.Shared;
 
 namespace SchoolMessenger.Mobile;
 
@@ -12,6 +13,7 @@ public sealed class MessengerApi : IDisposable
 {
     readonly CookieContainer cookies=new();
     readonly HttpClient http;
+    readonly HttpClient transfers;
     readonly string key;
     internal CookieContainer SessionCookies=>cookies;
     public string ProductCode=>(Office?"teacher-":"school-")+(DeviceInfo.Platform==DevicePlatform.MacCatalyst?"macos":DeviceInfo.Platform==DevicePlatform.iOS?"ios":"android");
@@ -48,8 +50,17 @@ public sealed class MessengerApi : IDisposable
         var handler=new HttpClientHandler{CookieContainer=cookies,AllowAutoRedirect=false,ServerCertificateCustomValidationCallback=CertificatePins.Callback(uri)};
 #endif
         http=new HttpClient(handler){BaseAddress=uri,Timeout=TimeSpan.FromSeconds(90)};
-        http.DefaultRequestHeaders.Add("X-YY-Product",ProductCode);
-        http.DefaultRequestHeaders.Add("X-YY-Version",AppInfo.Current.VersionString);
+        var transferHandler=new SocketsHttpHandler
+        {
+            CookieContainer=cookies,AllowAutoRedirect=false,
+            SslOptions=new(){RemoteCertificateValidationCallback=(_,certificate,_,errors)=>CertificatePins.Validate(uri,certificate,errors)}
+        };
+        transfers=new HttpClient(transferHandler){BaseAddress=uri,Timeout=TimeSpan.FromMinutes(20)};
+        foreach(var client in new[]{http,transfers})
+        {
+            client.DefaultRequestHeaders.Add("X-YY-Product",ProductCode);
+            client.DefaultRequestHeaders.Add("X-YY-Version",AppInfo.Current.VersionString);
+        }
     }
     public async Task Restore()
     {
@@ -97,18 +108,27 @@ public sealed class MessengerApi : IDisposable
     public async Task<JsonElement> Send(string path,object? body=null,HttpContent? content=null,HttpMethod? method=null)
     {
         if(csrf.Length==0)await Refresh();using var request=new HttpRequestMessage(method??HttpMethod.Post,path);request.Headers.Add("X-CSRF-TOKEN",csrf);var payload=body??new MobileEmpty();request.Content=content??JsonContent.Create(payload,MobileJson.Default.GetTypeInfo(payload.GetType())??throw new InvalidOperationException("지원하지 않는 요청입니다."));
-        using var response=await http.SendAsync(request);await Check(response);var value=await Read(response);await Persist();return value;
+        using var response=await (content?.Headers.ContentType?.MediaType=="application/octet-stream"?transfers:http).SendAsync(request);await Check(response);var value=await Read(response);await Persist();return value;
     }
     public async Task Login(string username,string password,bool remember)
     {Remember=remember;await Refresh();await Send("api/login",new MobileLogin(username,password,remember));await Refresh();}
     public async Task Logout()
     {var folder=ShareFolder();try{await Send("api/logout");}finally{DeleteShares(folder);SecureStorage.Default.Remove(key);foreach(Cookie c in cookies.GetCookies(Address))c.Expired=true;Session=default;Invalidated?.Invoke();}}
-    public async Task<JsonElement> Upload(FileResult file,bool external,string kind="notice")
+    public async Task<JsonElement> Upload(FileResult file,bool external,string kind="notice",bool submission=false)
     {
         using var content=new MultipartFormDataContent();if(!Office)content.Add(new StringContent(Guid.NewGuid().ToString("N")),"clientId");
         var stream=await file.OpenReadAsync();
         try
         {
+            if(Office&&!external&&stream.CanSeek&&stream.Length>AttachmentLimits.LegacyFile)
+            {
+                if(submission)throw new InvalidOperationException("제출 파일은 한 개당 100MB까지입니다.");
+                if(stream.Length>AttachmentLimits.Message)throw new InvalidOperationException("파일당 2GiB까지 첨부할 수 있습니다.");
+                using var raw=new StreamContent(stream);raw.Headers.ContentType=new("application/octet-stream");
+                raw.Headers.ContentLength=stream.Length;
+                raw.Headers.Add(AttachmentLimits.NameHeader,Uri.EscapeDataString(Path.GetFileName(file.FileName)));
+                return await Send("api/attachments",content:raw);
+            }
             if(external)
             {
                 if(Path.GetExtension(file.FileName).ToLowerInvariant() is not(".png"or".jpg"or".jpeg"))throw new InvalidOperationException("학교 공지는 JPG·PNG 이미지로 올려주세요.");
@@ -138,7 +158,14 @@ public sealed class MessengerApi : IDisposable
         await using var stream=await response.Content.ReadAsStreamAsync();return await ReadNoticeImage(stream);
         }
     }
-    public Task ShareFile(string id,string name)=>ShareDownload("api/attachments/"+id+"/download",name,100L*1024*1024);
+    public async Task ShareFile(string id,string name,Action<AttachmentProgress>? progress=null,CancellationToken cancellation=default)
+    {
+        if(!Guid.TryParseExact(id,"N",out _))throw new InvalidOperationException("첨부파일 번호를 확인하세요.");
+        var folder=ShareFolder();Directory.CreateDirectory(folder);
+        var path=Path.Combine(folder,id+"-"+Path.GetFileName(name));
+        await AttachmentDownload.Save(transfers,"api/attachments/"+id+"/download",Session.GetProperty("user").GetProperty("id").GetString()!,path,Check,progress,cancellation);
+        await Share.Default.RequestAsync(new ShareFileRequest("첨부 저장·공유",new ShareFile(path)));
+    }
     public async Task ShareDownload(string route,string name,long limit)
     {
         using var response=await http.GetAsync(route,HttpCompletionOption.ResponseHeadersRead);await Check(response);
@@ -163,7 +190,7 @@ public sealed class MessengerApi : IDisposable
         throw new MessengerApiRefusal((int)response.StatusCode,message);
     }
     static async Task<JsonElement> Read(HttpResponseMessage response){var text=await response.Content.ReadAsStringAsync();if(string.IsNullOrEmpty(text))return default;using var document=JsonDocument.Parse(text);return document.RootElement.Clone();}
-    public void Dispose(){DeleteShares(ShareFolder());http.Dispose();}
+    public void Dispose(){transfers.Dispose();DeleteShares(ShareFolder());http.Dispose();}
 }
 // The server answered and refused; callers that retry later can tell this apart from a network failure.
 public sealed class MessengerApiRefusal(int status,string message):InvalidOperationException(message)

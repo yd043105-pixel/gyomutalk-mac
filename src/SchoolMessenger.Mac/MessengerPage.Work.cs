@@ -163,7 +163,7 @@ public sealed partial class MessengerPage
                 {
                     preserveComposerOnResume=true;var picked=(await FilePicker.Default.PickMultipleAsync(new PickOptions{PickerTitle="제출할 파일 선택"}))?.OfType<FileResult>().ToArray()??[];
                     if(picked.Length==0)return;if(picked.Length>10)throw new InvalidOperationException("파일은 최대 10개까지 제출할 수 있습니다.");
-                    var uploads=new JsonArray();foreach(var file in picked){var upload=await source.Upload(file,false);if(!Current(source,version))return;uploads.Add((JsonNode?)JsonValue.Create(upload.GetProperty("id").GetString()));}
+                    var uploads=new JsonArray();foreach(var file in picked){var upload=await source.Upload(file,false,submission:true);if(!Current(source,version))return;uploads.Add((JsonNode?)JsonValue.Create(upload.GetProperty("id").GetString()));}
                     packet=new JsonObject{["clientId"]=Guid.NewGuid().ToString("N"),["attachmentIds"]=uploads};macPendingSubmissions[id]=packet;
                 }
                 await MacSend(source,"api/submission-requests/"+id+"/submit",packet);macPendingSubmissions.Remove(id);await Reload();feedback.Text="파일을 제출했습니다.";

@@ -149,7 +149,28 @@ public sealed partial class MessengerPage : ContentPage
         foreach(var file in files.EnumerateArray())
         {
             var expired=file.TryGetProperty("expired",out var flag)&&flag.GetBoolean();var id=file.GetProperty("id").GetString()!;var name=file.GetProperty("name").GetString()!;
-            var b=new Button{Text=name+(expired?" · 기간 만료":" · 저장/공유"),IsEnabled=!expired};b.Clicked+=async(_,_)=>{b.IsEnabled=false;try{await source.ShareFile(id,name);}catch(Exception e){await page.DisplayAlertAsync("첨부파일",e.Message,"확인");}finally{b.IsEnabled=true;}};stack.Add(b);
+            var b=new Button{Text=name+(expired?" · 기간 만료":" · 저장/공유"),IsEnabled=!expired};stack.Add(b);
+            var bar=new ProgressBar{IsVisible=false};var status=Text("",12);status.IsVisible=false;
+            var pause=new Button{Text="일시 중지",IsVisible=false};stack.Add(bar);stack.Add(status);stack.Add(pause);
+            b.Clicked+=async(_,_)=>
+            {
+                using var cancellation=new CancellationTokenSource();
+                EventHandler stop=(_,_)=>cancellation.Cancel();pause.Clicked+=stop;
+                b.IsEnabled=false;bar.IsVisible=status.IsVisible=pause.IsVisible=true;bar.Progress=0;status.Text="서버에서 파일을 확인하고 있습니다.";
+                try
+                {
+                    await source.ShareFile(id,name,value=>
+                    {
+                        if(value.Total>0)bar.Progress=value.Received/(double)value.Total;
+                        var remaining=value.BytesPerSecond>0&&value.Total>value.Received?$" · 약 {(value.Total-value.Received)/value.BytesPerSecond:F0}초 남음":"";
+                        status.Text=$"{value.Received/1048576.0:F1} / {value.Total/1048576.0:F1} MiB · {value.BytesPerSecond/1048576:F1} MiB/s"+remaining;
+                    },cancellation.Token);
+                    status.Text="파일을 받았습니다.";
+                }
+                catch(OperationCanceledException)when(cancellation.IsCancellationRequested){status.Text="일시 중지했습니다. 같은 첨부를 누르면 이어받습니다.";}
+                catch(Exception error){status.Text=error.Message;}
+                finally{pause.Clicked-=stop;pause.IsVisible=bar.IsVisible=false;b.IsEnabled=true;}
+            };
         }
         return page;
     }
