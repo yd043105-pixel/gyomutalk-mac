@@ -52,13 +52,23 @@ public sealed partial class MessengerPage
         Link("sent","보낸 메시지","nav_notices.png",async()=>{homeTab="notices";view="sent";offset=0;await Home();});
         Link("compose","새 메시지","nav_notices.png",()=>MacCompose());Link("work","할 일·제출","action_calendar.png",()=>MacWork());Link("people","조직도","nav_profile.png",MacPeople);
         Section("학교 업무",Color.FromArgb("#E3F1EB"));
-        Link("timetable","시간표","action_calendar.png",async()=>{await Timetable();});Link("calendar","학교 일정","action_calendar.png",()=>OfficeSchedule(false));
+        var timetableRow=row;
+        Link("timetable","시간표","action_calendar.png",async()=>{await Timetable();});
+        desktopTimetableRow=links.RowDefinitions[timetableRow];SetDesktopTimetable(false);
+        Link("calendar","학교 일정","action_calendar.png",()=>OfficeSchedule(false));
         Link("rooms","특별실 예약","action_room.png",()=>OfficeSchedule(true));
         Link("account","내 정보","nav_profile.png",async()=>{homeTab="account";await Home();});rail.Add(links,0,2);
         var away=DesktopButton("자리비움",async()=>{if(desktopHub?.State!=HubConnectionState.Connected)throw new InvalidOperationException("연결을 확인하세요.");desktopAway=await desktopHub.InvokeAsync<bool>("SetAway",!desktopAway);desktopStatus.Text=desktopAway?"자리비움":"온라인";});away.FontSize=12;away.Padding=4;rail.Add(away,0,3);
         var grid=new Grid{ColumnDefinitions={new(new GridLength(96)),new(GridLength.Star)},RowDefinitions={new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=1,BackgroundColor=Line};grid.Add(rail);Grid.SetRowSpan(rail,2);grid.Add(desktopContent,1);feedback.Margin=new Thickness(16,4);grid.Add(feedback,1,1);Content=grid;
         // Keep the desktop navigation in view at short window heights as well.
         rail.SizeChanged+=(_,_)=>{var compact=rail.Height>0&&rail.Height<720;foreach(var item in desktopMenu.Values){item.ImageSource=compact?null:item.AutomationId is "mac-nav-rooms"?"action_room.png":item.AutomationId is "mac-nav-work" or "mac-nav-timetable" or "mac-nav-calendar" or "mac-nav-counseling"?"action_calendar.png":item.AutomationId is "mac-nav-people" or "mac-nav-account"?"nav_profile.png":"nav_notices.png";item.HeightRequest=compact?40:56;}};
+    }
+    RowDefinition? desktopTimetableRow;
+    void SetDesktopTimetable(bool enabled)
+    {
+        if(desktopTimetableRow is null)return;
+        desktopMenu["timetable"].IsVisible=enabled;
+        desktopTimetableRow.Height=enabled?GridLength.Star:new GridLength(0);
     }
     async Task DesktopMailbox(string query="")
     {

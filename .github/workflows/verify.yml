@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: yd043105-pixel/gyomutalk-server
-          ref: 0c6bf3a572bfbb04142c8c2eda7583b24705e667
+          ref: d3fd0304d66b997a1a6f17378ea468cb4ebd5006
           path: .test-services
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
@@ -48,7 +48,6 @@ jobs:
           [[ "$(uname -m)" != arm64 ]] || runtime=maccatalyst-arm64
           dotnet build src/SchoolMessenger.Mac -c Debug -r "$runtime" --no-restore -p:MacVerification=true -p:CodesignKey=- -p:CodesignRequireProvisioningProfile=false
           dotnet build .test-services/src/SchoolMessenger.Server -p:RestoreLockedMode=true
-          dotnet build .test-services/src/SchoolMessenger.AnnouncementServer -p:RestoreLockedMode=true
       - name: Embed signed updater into the native test application
         run: |
           runtime=maccatalyst-x64; arch=x86_64

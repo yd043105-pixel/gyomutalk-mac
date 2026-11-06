@@ -17,6 +17,7 @@ public sealed partial class MessengerPage
     }
     internal MessengerApi MacVerifyApi=>api!;
     internal bool MacVerifyConnected=>desktopHub?.State==Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
+    internal Task<bool> MacVerifyTimetable()=>Timetable();
     internal Task MacVerifyCompose()=>MacCompose();
     internal Task MacVerifyDetail(string id)=>OfficeDetail(id);
     internal ContentView? MacVerifyReader=>desktopReader;
@@ -91,6 +92,14 @@ internal static class MacRuntimeChecks
             await Page.MacVerifyLogin(fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost"),fixture.GetProperty("password").GetString()!);
             Check(Page.MacVerifyApi.ProductCode=="teacher-macos"&&!Page.MacVerifyApi.Remember,"Mac product identity and session kept in memory for ad-hoc verification");
             await Wait(()=>Page.MacVerifyConnected);
+            var timetable=Views(Page.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-nav-timetable");
+            Check(timetable.IsVisible&&await Page.MacVerifyTimetable(),"The enabled timetable opens from the desktop workspace");
+            await Page.MacVerifyApi.Send("api/admin/timetable-feature",content:Json(new JsonObject{["enabled"]=false}));
+            await Wait(()=>!timetable.IsVisible&&Page.Navigation.NavigationStack.Count==1);
+            Check(!timetable.IsVisible,"Disabling the timetable hides its sidebar item and closes the active timetable view");
+            await Page.MacVerifyApi.Send("api/admin/timetable-feature",content:Json(new JsonObject{["enabled"]=true}));
+            await Wait(()=>timetable.IsVisible);
+            Check(timetable.IsVisible,"Re-enabling the timetable restores its sidebar item without signing in again");
             var people=await Page.MacVerifyApi.Get("api/users");var self=people.EnumerateArray().Single(p=>p.GetProperty("id").GetString()==Page.MacVerifyApi.Session.GetProperty("user").GetProperty("id").GetString());
             Check(self.GetProperty("online").GetBoolean()&&!self.GetProperty("mobile").GetBoolean(),"Server reports Mac as desktop online, without a phone lease");
             Check(Page.MacVerifyReader?.Content is Grid&&Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId=="mac-filter-unread"),"Desktop message list and reader remain side by side with a native unread filter");

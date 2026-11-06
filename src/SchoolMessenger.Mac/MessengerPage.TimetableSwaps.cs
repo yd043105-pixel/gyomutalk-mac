@@ -9,7 +9,8 @@ namespace SchoolMessenger.Mobile;
 public sealed partial class MessengerPage
 {
     Page? timetableExternalPage;
-    bool MacScheduleActive(MessengerApi source) => api == source && !covered &&
+    Page? timetablePage;
+    bool MacScheduleActive(MessengerApi source) => api == source && !covered && desktopMenu["timetable"].IsVisible &&
         source.Session.ValueKind == JsonValueKind.Object &&
         source.Session.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.Object;
 

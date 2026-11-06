@@ -8,7 +8,8 @@ public sealed partial class MessengerPage
 {
     async Task<bool> Timetable(string? selectedDate=null,string? selectedClass=null)
     {
-        var source=api!;var setup=await source.Get("api/timetable/setup");if(!MacScheduleActive(source))return false;
+        var source=api!;if(!MacScheduleActive(source))return false;
+        var setup=await source.Get("api/timetable/setup");if(!MacScheduleActive(source))return false;
         var teacher=source.Office||source.Session.GetProperty("user").GetProperty("role").GetString()=="teacher";
         var rooms=setup.GetProperty("classes").EnumerateArray().ToArray();
         var page=new ContentPage{Title=teacher?"시간표 · 내 수업":"우리 학급 시간표",BackgroundColor=BackgroundColor};
@@ -90,6 +91,6 @@ public sealed partial class MessengerPage
             finally{loading=false;date.IsEnabled=scope.IsEnabled=dayButton.IsEnabled=weekButton.IsEnabled=true;}
         }
         dayButton.Clicked+=async(_,_)=>await Show(false);weekButton.Clicked+=async(_,_)=>await Show(true);
-        await Show(false);if(!MacScheduleActive(source))return false;await Navigation.PushAsync(page);return loaded;
+        await Show(false);if(!MacScheduleActive(source))return false;timetablePage=page;await Navigation.PushAsync(page);return loaded;
     }
 }

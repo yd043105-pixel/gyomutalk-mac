@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Maui.Dispatching;
 
 namespace SchoolMessenger.Mobile;
 
@@ -12,11 +13,27 @@ public sealed partial class MessengerPage
     MessengerApi? desktopOwner;
     readonly Label desktopStatus=Text("로그인 필요",12);
     bool desktopAway;
+    IDispatcherTimer? timetableTimer;
+    int timetableAvailabilityRequest;
+    async Task RefreshDesktopTimetable(MessengerApi source)
+    {
+        var request=++timetableAvailabilityRequest;
+        var enabled=true; // Older school servers always exposed the timetable.
+        try { enabled=(await source.Get("api/timetable/status")).GetProperty("enabled").GetBoolean(); }
+        catch(MessengerApiRefusal e) when(e.Status==404) { }
+        catch(Exception e) when(e is HttpRequestException or InvalidOperationException or OperationCanceledException or JsonException) { return; }
+        if(api!=source||desktopOwner!=source||covered||request!=timetableAvailabilityRequest)return;
+        SetDesktopTimetable(enabled);
+        if(!enabled&&timetablePage is { } page&&Navigation.NavigationStack.Contains(page))await Navigation.PopToRootAsync(false);
+    }
     async Task StartDesktopPresence()
     {
         var source=api;if(source?.Office!=true)return;
         if(desktopOwner==source&&desktopHub is not null)return;
         StopDesktopPresence();desktopOwner=source;
+        await RefreshDesktopTimetable(source);if(desktopOwner!=source)return;
+        var timer=Dispatcher.CreateTimer();timer.Interval=TimeSpan.FromSeconds(30);
+        timer.Tick+=async(_,_)=>{if(desktopOwner==source)await RefreshDesktopTimetable(source);};timer.Start();timetableTimer=timer;
         if(!await OpenDesktopArchive(source)||desktopOwner!=source)return;
         var hub=new HubConnectionBuilder().WithUrl(new Uri(source.Address,"hub"),options=>
         {
@@ -27,8 +44,9 @@ public sealed partial class MessengerPage
         desktopHub=hub;
         hub.On<JsonElement>("NewMessage",message=>MainThread.BeginInvokeOnMainThread(()=>{if(desktopOwner!=source)return;desktopStatus.Text="새 메시지가 도착했습니다";_=SynchronizeDesktopArchive(source);}));
         hub.On<JsonElement>("MessageRecalled",id=>MainThread.BeginInvokeOnMainThread(()=>{if(desktopOwner==source&&desktopArchive?.Owner==source&&id.ValueKind==JsonValueKind.String)try{desktopArchive.Remove(id.GetString()!);}catch(Exception error)when(error is IOException or UnauthorizedAccessException or InvalidOperationException){}}));
+        hub.On("TimetableAvailabilityChanged",()=>MainThread.InvokeOnMainThreadAsync(()=>desktopOwner==source?RefreshDesktopTimetable(source):Task.CompletedTask));
         hub.Reconnecting+=_=>{MainThread.BeginInvokeOnMainThread(()=>desktopStatus.Text="다시 연결 중");return Task.CompletedTask;};
-        hub.Reconnected+=connection=>{MainThread.BeginInvokeOnMainThread(()=>{desktopStatus.Text="온라인";_=SynchronizeDesktopArchive(source);});return Task.CompletedTask;};
+        hub.Reconnected+=connection=>{MainThread.BeginInvokeOnMainThread(()=>{desktopStatus.Text="온라인";_=SynchronizeDesktopArchive(source);_=RefreshDesktopTimetable(source);});return Task.CompletedTask;};
         hub.Closed+=_=>{MainThread.BeginInvokeOnMainThread(()=>{if(desktopHub==hub){desktopHub=null;desktopOwner=null;desktopStatus.Text="연결 끊김 · 받은함 새로고침";}});return Task.CompletedTask;};
         try{await hub.StartAsync();if(desktopOwner==source){desktopStatus.Text=source.StorageWarning??"온라인";_=SynchronizeDesktopArchive(source);}}
         catch(Exception error)when(error is HttpRequestException or InvalidOperationException or OperationCanceledException)
@@ -36,6 +54,7 @@ public sealed partial class MessengerPage
     }
     internal void StopDesktopPresence()
     {
+        timetableTimer?.Stop();timetableTimer=null;SetDesktopTimetable(false);
         var hub=desktopHub;desktopHub=null;desktopOwner=null;desktopArchive=null;desktopAway=false;desktopStatus.Text="로그인 필요";
         if(hub is not null)_=DisposeDesktopHub(hub);
     }

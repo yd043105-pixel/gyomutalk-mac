@@ -3,6 +3,8 @@ import {spawn,spawnSync} from 'node:child_process';
 import {existsSync,readFileSync,writeFileSync,mkdirSync,copyFileSync,readdirSync} from 'node:fs';
 import path from 'node:path';
 import {homedir} from 'node:os';
+import {randomUUID} from 'node:crypto';
+import net from 'node:net';
 assert.equal(process.platform,'darwin');
 const output=path.resolve('artifacts/mac');mkdirSync(output,{recursive:true});
 const runtime=process.arch==='arm64'?'maccatalyst-arm64':'maccatalyst-x64';
@@ -11,12 +13,24 @@ const bundles=readdirSync(build).filter(name=>name.endsWith('.app'));assert.equa
 const bundle=path.join(build,bundles[0]);
 const executable=spawnSync('/usr/libexec/PlistBuddy',['-c','Print :CFBundleExecutable',path.join(bundle,'Contents/Info.plist')],{encoding:'utf8'});assert.equal(executable.status,0,executable.stderr);
 const delay=ms=>new Promise(r=>setTimeout(r,ms));let logs='',appLogs='',report,app;
-const fixture=spawn(process.execPath,['tests/portal-preview.mjs']);
+const listener=net.createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));
+const office='http://127.0.0.1:'+listener.address().port;await new Promise(resolve=>listener.close(resolve));
+const password='Test-'+randomUUID();
+const services=path.resolve(process.env.YY_TEST_SERVICE_ROOT??'.test-services');
+const fixture=spawn('dotnet',[path.join(services,'src/SchoolMessenger.Server/bin/Debug/net10.0/SchoolMessenger.Server.dll'),'--urls',office],{
+  cwd:services,env:{...process.env,ASPNETCORE_ENVIRONMENT:'Development',School__DataDirectory:path.resolve('.test-data','mac-runtime-'+randomUUID()),School__AdminPassword:password}
+});
+fixture.on('error',error=>{logs+=error;});
 fixture.stdout.on('data',b=>logs+=b);fixture.stderr.on('data',b=>logs+=b);
 try{
-  for(let i=0;i<240&&!logs.includes('timetable fixture ready.');i++){assert.equal(fixture.exitCode,null,logs);await delay(500);}
-  assert.ok(logs.includes('timetable fixture ready.'),'Fixture startup failed: '+logs);
-  const fixtureData=readFileSync('.test-data/portal-preview/access.json');
+  let ready=false;
+  for(let i=0;i<120&&!ready;i++){
+    assert.equal(fixture.exitCode,null,logs);
+    try{ready=(await fetch(office+'/health')).ok;}catch{}
+    if(!ready)await delay(250);
+  }
+  assert.ok(ready,'Fixture startup failed: '+logs);
+  const fixtureData=Buffer.from(JSON.stringify({office,password}));
   app=spawn(path.join(bundle,'Contents/MacOS',executable.stdout.trim()),[],{env:{...process.env,YY_MAC_FIXTURE_B64:fixtureData.toString('base64')}});
   app.on('error',error=>{appLogs+='Native launch error: '+error.message;});
   app.stdout.on('data',b=>{appLogs+=b;const match=appLogs.match(/MAC_REPORT_PATH:([^\r\n]+)/);if(match)report=match[1];});app.stderr.on('data',b=>{appLogs+=b;const match=appLogs.match(/MAC_REPORT_PATH:([^\r\n]+)/);if(match)report=match[1];});
