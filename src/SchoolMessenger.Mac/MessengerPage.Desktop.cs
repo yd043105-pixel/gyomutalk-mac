@@ -47,10 +47,10 @@ public sealed partial class MessengerPage
         hub.On("TimetableAvailabilityChanged",()=>MainThread.InvokeOnMainThreadAsync(()=>desktopOwner==source?RefreshDesktopTimetable(source):Task.CompletedTask));
         hub.Reconnecting+=_=>{MainThread.BeginInvokeOnMainThread(()=>desktopStatus.Text="다시 연결 중");return Task.CompletedTask;};
         hub.Reconnected+=connection=>{MainThread.BeginInvokeOnMainThread(()=>{desktopStatus.Text="온라인";_=SynchronizeDesktopArchive(source);_=RefreshDesktopTimetable(source);});return Task.CompletedTask;};
-        hub.Closed+=_=>{MainThread.BeginInvokeOnMainThread(()=>{if(desktopHub==hub){desktopHub=null;desktopOwner=null;desktopStatus.Text="연결 끊김 · 받은함 새로고침";}});return Task.CompletedTask;};
+        hub.Closed+=_=>{MainThread.BeginInvokeOnMainThread(()=>{if(desktopHub==hub){desktopHub=null;desktopStatus.Text="연결 끊김 · 받은함 새로고침";}});return Task.CompletedTask;};
         try{await hub.StartAsync();if(desktopOwner==source){desktopStatus.Text=source.StorageWarning??"온라인";_=SynchronizeDesktopArchive(source);}}
         catch(Exception error)when(error is HttpRequestException or InvalidOperationException or OperationCanceledException)
-        {if(desktopHub==hub){desktopHub=null;desktopOwner=null;desktopStatus.Text="실시간 연결 실패 · 받은함으로 재시도";}await hub.DisposeAsync();}
+        {if(desktopHub==hub){desktopHub=null;desktopStatus.Text="실시간 연결 실패 · 받은함으로 재시도";}await hub.DisposeAsync();}
     }
     internal void StopDesktopPresence()
     {
