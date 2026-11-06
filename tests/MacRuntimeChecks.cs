@@ -13,7 +13,15 @@ public sealed partial class MessengerPage
     internal async Task MacVerifyLogin(string address,string password)
     {
         Preferences.Default.Set("update-confirmed-sequence",999999);
-        api=new MessengerApi(address,true);await api.Login("admin",password,false);homeTab="notices";await Home();
+        api=new MessengerApi(address,true);await api.Login("admin",password,false);
+        var userId=api.Session.GetProperty("user").GetProperty("id").GetString();
+        await MacSend(api,"api/messages",new JsonObject
+        {
+            ["clientId"]=Guid.NewGuid().ToString("N"),["title"]="교직원 업무 메시지 검증",
+            ["body"]="받은 메시지 목록과 본문을 확인하는 가상 자료입니다.",
+            ["recipientIds"]=new JsonArray((JsonNode?)JsonValue.Create(userId)),["attachmentIds"]=new JsonArray()
+        });
+        homeTab="notices";await Home();
     }
     internal MessengerApi MacVerifyApi=>api!;
     internal bool MacVerifyConnected=>desktopHub?.State==Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
