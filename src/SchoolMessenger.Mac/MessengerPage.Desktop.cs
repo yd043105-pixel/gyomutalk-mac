@@ -100,13 +100,16 @@ public sealed partial class MessengerPage
             Id: person.GetProperty("id").GetString()!,
             Name: person.GetProperty("name").GetString()!,
             Department: person.GetProperty("department").GetString() ?? "교직원")).ToDictionary(row => row.Id);
-        var page=DesktopPage("조직도");var stack=new VerticalStackLayout{Padding=20,Spacing=10};((Grid)page.Content).Add(new ScrollView{Content=stack},0,1);
-        var search=new Entry{ClassId="school-field",Placeholder="이름·부서·폴더 검색",FontSize=16,TextColor=Navy,PlaceholderColor=Muted};stack.Add(DesktopPanel(search,8));
+        var page=DesktopPage("조직도");var root=(Grid)page.Content;
+        var content=new Grid{Padding=16,RowSpacing=10,RowDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star)}};root.Add(content,0,1);
+        content.Add(Text("교직원",22,true));
+        var search=new Entry{ClassId="school-field",Placeholder="이름·부서·폴더 검색",FontSize=15,TextColor=Navy,PlaceholderColor=Muted};content.Add(DesktopPanel(search,6),0,1);
         var selection = new HashSet<string>();
         var send = DesktopButton("선택 0명에게 메시지", () => MacCompose(selectedIds: selection.ToArray()), true);
         send.IsEnabled = false;
-        send.HorizontalOptions = LayoutOptions.End; stack.Add(send);
-        var rows=new VerticalStackLayout{Spacing=4};stack.Add(rows);
+        var footer=new Grid{Padding=new Thickness(16,8),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)},BackgroundColor=Color.FromArgb("#F3F6FB")};
+        var total=Text("전체 "+directory.Count+"명",12);total.TextColor=Muted;total.VerticalOptions=LayoutOptions.Center;footer.Add(total);footer.Add(send,1);root.Add(footer,0,2);
+        var rows=new VerticalStackLayout{Spacing=4};content.Add(new ScrollView{Content=rows},0,2);
         var checks = new List<(CheckBox Check, string Id)>();
         var collapsed = new HashSet<string>();
         void Show()
@@ -115,7 +118,9 @@ public sealed partial class MessengerPage
             var query = search.Text?.Trim() ?? "";
             var groups = RosterGroup.Build(folders, directory.Values.Select(row => (row.Id, row.Name + " · " + row.Department, row.Department)).ToArray(), query);
             foreach (var group in groups) AddGroup(group, 0);
-            if (rows.Children.Count == 0) rows.Add(Text("표시할 교직원이 없습니다.", 14));
+            if (rows.Children.Count == 0) rows.Add(query.Length>0
+                ? DesktopEmptyState("일치하는 교직원이 없습니다","이름이나 부서, 폴더 이름을 바꿔 보세요.")
+                : DesktopEmptyState("표시할 교직원이 없습니다","관리자가 교직원을 등록하면 여기에 표시됩니다."));
 
             void AddGroup(RosterGroup group, int indent)
             {
@@ -126,6 +131,8 @@ public sealed partial class MessengerPage
                     Show(); return Task.CompletedTask;
                 });
                 header.HorizontalOptions = LayoutOptions.Start;
+                header.BackgroundColor = Color.FromArgb("#F3F6FB");
+                header.FontSize = 13;header.MinimumHeightRequest = 34;header.Padding = new Thickness(10,5);
                 header.Margin = new Thickness(indent, 0, 0, 0);
                 rows.Add(header);
                 if (!expanded) return;

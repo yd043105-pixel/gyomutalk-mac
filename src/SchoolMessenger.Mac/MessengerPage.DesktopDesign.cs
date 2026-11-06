@@ -13,6 +13,15 @@ public sealed partial class MessengerPage
     readonly Dictionary<string,Button> desktopMenu=[];
     static Border DesktopPanel(View content,double padding=12,Color? fill=null)=>new()
     {Content=content,Padding=padding,BackgroundColor=fill??Colors.White,Stroke=Line,StrokeThickness=1,StrokeShape=new RoundRectangle{CornerRadius=10}};
+    Border DesktopEmptyState(string title,string description)
+    {
+        var words=new VerticalStackLayout{Spacing=6};
+        var heading=Text(title,16,true);heading.HorizontalTextAlignment=TextAlignment.Center;words.Add(heading);
+        var hint=Text(description,12);hint.TextColor=Muted;hint.HorizontalTextAlignment=TextAlignment.Center;words.Add(hint);
+        var card=DesktopPanel(words,20,Color.FromArgb("#F3F6FB"));
+        card.MaximumWidthRequest=520;card.HorizontalOptions=LayoutOptions.Fill;
+        return card;
+    }
     Button DesktopButton(string label,Func<Task>? action=null,bool primary=false)
     {
         var button=new Button{Text=label,FontSize=16,FontAttributes=FontAttributes.None,Padding=new Thickness(14,8),MinimumHeightRequest=42,CornerRadius=10,BorderWidth=1,BorderColor=primary?Blue:Line,BackgroundColor=primary?Blue:Colors.White,TextColor=primary?Colors.White:Navy,LineBreakMode=LineBreakMode.TailTruncation};
@@ -77,33 +86,55 @@ public sealed partial class MessengerPage
         var found=rows.EnumerateArray().ToList();if(offset==0&&query.Trim().Length>0)found.AddRange(LocalMatches(source,query.Trim()).Where(m=>found.All(r=>r.GetProperty("id").GetString()!=m.GetProperty("id").GetString())));
         var root=new Grid{RowDefinitions={new(GridLength.Auto),new(GridLength.Star)},BackgroundColor=Colors.White};
         var toolbar=new Grid{Padding=new Thickness(22,14),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto),new(GridLength.Auto)},ColumnSpacing=12,BackgroundColor=Color.FromArgb("#F8FAFD")};
-        var heading=new VerticalStackLayout{Spacing=3};heading.Add(Text(view=="sent"?"보낸 메시지":view=="unread"?"미확인 메시지":"받은 메시지",19,true));var meta=Text(schoolName+" · "+source.Session.GetProperty("user").GetProperty("name").GetString(),11);meta.TextColor=Muted;heading.Add(meta);toolbar.Add(heading);
+        var heading=new VerticalStackLayout{Spacing=3};heading.Add(Text("메시지함",22,true));var meta=Text(schoolName+" · "+source.Session.GetProperty("user").GetProperty("name").GetString(),11);meta.TextColor=Muted;heading.Add(meta);toolbar.Add(heading);
         desktopStatus.MaxLines=1;desktopStatus.LineBreakMode=LineBreakMode.TailTruncation;desktopStatus.MaximumWidthRequest=240;desktopStatus.TextColor=Muted;desktopStatus.VerticalOptions=LayoutOptions.Center;
         if(desktopStatus.Parent is Grid oldToolbar)oldToolbar.Remove(desktopStatus);toolbar.Add(desktopStatus,1);toolbar.Add(DesktopButton("새 메시지",()=>MacCompose(),true),2);root.Add(toolbar);
-        var panes=new Grid{ColumnDefinitions={new(new GridLength(296)),new(GridLength.Star)},ColumnSpacing=1,BackgroundColor=Line};root.Add(panes,0,1);
+        var panes=new Grid{ColumnDefinitions={new(new GridLength(260)),new(GridLength.Star)},ColumnSpacing=1,BackgroundColor=Line};root.Add(panes,0,1);
+        panes.SizeChanged+=(_,_)=>{if(panes.ColumnDefinitions.Count==0)return;var width=panes.Width<760?218:260;if(panes.ColumnDefinitions[0].Width.Value!=width)panes.ColumnDefinitions[0].Width=new GridLength(width);};
         var list=new Grid{BackgroundColor=Color.FromArgb("#F5F8FC"),Padding=12,RowSpacing=10,RowDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star),new(GridLength.Auto)}};
         var search=new Entry{ClassId="school-field",Placeholder="제목·본문·보낸 사람 검색",Text=query,FontSize=15,MaxLength=200,TextColor=Navy,PlaceholderColor=Muted,ReturnType=ReturnType.Search};search.Completed+=async(_,_)=>await Run(()=>DesktopMailbox(search.Text??""));list.Add(DesktopPanel(search,7));
-        var filters=new HorizontalStackLayout{Spacing=6};var received=DesktopButton("받은",async()=>{view="received";offset=0;await DesktopMailbox(query);});received.AutomationId="mac-filter-received";var unreadButton=DesktopButton("미확인",async()=>{view="unread";offset=0;await DesktopMailbox(query);});unreadButton.AutomationId="mac-filter-unread";foreach(var filter in new[]{received,unreadButton}){filter.FontSize=13;filter.MinimumHeightRequest=34;filter.Padding=new Thickness(10,5);filters.Add(filter);}list.Add(filters,0,1);
+        var filters=new HorizontalStackLayout{Spacing=6};
+        foreach(var (key,label) in new[]{("received","받은"),("unread","미확인"),("sent","보낸")})
+        {
+            var filter=DesktopButton(label,async()=>{view=key;offset=0;await DesktopMailbox(search.Text??"");});
+            filter.AutomationId="mac-filter-"+key;filter.FontSize=13;filter.MinimumHeightRequest=34;filter.Padding=new Thickness(8,5);
+            if(view==key){filter.BackgroundColor=Pale;filter.TextColor=Blue;}
+            filters.Add(filter);
+        }
+        list.Add(filters,0,1);
         var messages=new VerticalStackLayout{Spacing=6};var choices=new List<(Border Row,string Id)>();desktopReader=new ContentView{BackgroundColor=Colors.White};
-        var empty=new VerticalStackLayout{Spacing=10,VerticalOptions=LayoutOptions.Center,HorizontalOptions=LayoutOptions.Center};empty.Add(new Image{Source="nav_notices.png",HeightRequest=32,WidthRequest=32});var hint=Text("왼쪽에서 메시지를 선택하세요",13);hint.TextColor=Muted;empty.Add(hint);desktopReader.Content=empty;panes.Add(desktopReader,1);
-        async Task OpenMessage(string id,Border selected,long createdAt)
+        var empty=DesktopEmptyState("메시지를 선택하세요","본문과 첨부파일을 확인할 수 있습니다.");
+        empty.Margin=16;empty.VerticalOptions=LayoutOptions.Center;desktopReader.Content=empty;panes.Add(desktopReader,1);
+        async Task OpenMessage(string id,Border selected,string sender,long createdAt)
         {
             foreach(var choice in choices)choice.Row.BackgroundColor=choice.Id==id?Pale:Colors.Transparent;
             await OfficeDetail(id);if(!Current(source,version))return;
-            var content=(VerticalStackLayout)selected.Content;((Button)content.Children[0]).FontAttributes=FontAttributes.None;((Label)content.Children[content.Children.Count-1]).Text=Date(createdAt);
+            var content=(VerticalStackLayout)selected.Content;((Button)content.Children[0]).FontAttributes=FontAttributes.None;((Label)content.Children[1]).Text=sender+" · "+Date(createdAt);
         }
         foreach(var message in found)
         {
             var id=message.GetProperty("id").GetString()!;var label=DesktopTitle(source,message);var card=new VerticalStackLayout{Spacing=4};var border=DesktopPanel(card,12,Colors.Transparent);border.StrokeThickness=0;
-            var createdAt=message.GetProperty("createdAt").GetInt64();
-            var subject=DesktopButton(label,()=>OpenMessage(id,border,createdAt));subject.ClassId="school-story";subject.AutomationId="mac-message-"+id;subject.BackgroundColor=Colors.Transparent;subject.BorderWidth=0;subject.Padding=0;subject.FontSize=16;subject.FontAttributes=message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent"?FontAttributes.Bold:FontAttributes.None;subject.MinimumHeightRequest=28;subject.HorizontalOptions=LayoutOptions.Fill;subject.ContentLayout=new(Button.ButtonContentLayout.ImagePosition.Left,0);card.Add(subject);
-            var author=Text(message.GetProperty("senderName").GetString()??"",11);author.TextColor=Muted;card.Add(author);var stamp=Text(Date(message.GetProperty("createdAt").GetInt64())+(message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent"?" · 미확인":""),10);stamp.TextColor=Muted;card.Add(stamp);messages.Add(border);choices.Add((border,id));
+            var createdAt=message.GetProperty("createdAt").GetInt64();var sender=message.GetProperty("senderName").GetString()??"";
+            var subject=DesktopButton(label,()=>OpenMessage(id,border,sender,createdAt));subject.ClassId="school-story";subject.AutomationId="mac-message-"+id;subject.BackgroundColor=Colors.Transparent;subject.BorderWidth=0;subject.Padding=0;subject.FontSize=14;subject.FontAttributes=message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent"?FontAttributes.Bold:FontAttributes.None;subject.MinimumHeightRequest=28;subject.HorizontalOptions=LayoutOptions.Fill;subject.ContentLayout=new(Button.ButtonContentLayout.ImagePosition.Left,0);card.Add(subject);
+            var stamp=Text(sender+" · "+Date(createdAt)+(message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent"?" · 미확인":""),11);
+            stamp.TextColor=Muted;stamp.MaxLines=1;stamp.LineBreakMode=LineBreakMode.TailTruncation;card.Add(stamp);messages.Add(border);choices.Add((border,id));
         }
-        if(found.Count==0){var noMessages=Text("표시할 메시지가 없습니다",12);noMessages.TextColor=Muted;messages.Add(noMessages);}
-        list.Add(new ScrollView{Content=messages},0,2);
-        var more=DesktopButton(rows.GetArrayLength()==100?"다음 메시지":"새로고침",async()=>{if(rows.GetArrayLength()==100)offset+=100;await DesktopMailbox(query);});more.FontSize=13;more.MinimumHeightRequest=36;list.Add(more,0,3);panes.Add(list);desktopContent.Content=root;
+        if(found.Count==0)
+        {
+            panes.Children.Clear();panes.ColumnDefinitions.Clear();
+            panes.RowDefinitions.Add(new RowDefinition(GridLength.Auto));panes.RowDefinitions.Add(new RowDefinition(GridLength.Star));
+            list.RowDefinitions[2].Height=new GridLength(0);panes.Add(list);
+            var title=!string.IsNullOrWhiteSpace(query)?"검색 결과가 없습니다":view switch{"sent"=>"보낸 메시지가 없습니다","unread"=>"미확인 메시지가 없습니다",_=>"받은 메시지가 없습니다"};
+            var blank=DesktopEmptyState(title,!string.IsNullOrWhiteSpace(query)?"검색어를 바꿔 보세요.":"메시지가 생기면 여기에서 확인할 수 있습니다.");
+            blank.Margin=16;blank.VerticalOptions=LayoutOptions.Center;desktopReader.Content=blank;panes.Add(desktopReader,0,1);
+        }
+        else
+        {
+            list.Add(new ScrollView{Content=messages},0,2);panes.Add(list);
+        }
+        var more=DesktopButton(rows.GetArrayLength()==100?"다음 메시지":"새로고침",async()=>{if(rows.GetArrayLength()==100)offset+=100;await DesktopMailbox(search.Text??"");});more.FontSize=13;more.MinimumHeightRequest=36;list.Add(more,0,3);desktopContent.Content=root;
         foreach(var pair in desktopMenu){pair.Value.BackgroundColor=pair.Key==view?Pale:Colors.Transparent;pair.Value.TextColor=pair.Key==view?Blue:Muted;}
-        if(found.Count>0)await OpenMessage(choices[0].Id,choices[0].Row,found[0].GetProperty("createdAt").GetInt64());
+        if(found.Count>0)await OpenMessage(choices[0].Id,choices[0].Row,found[0].GetProperty("senderName").GetString()??"",found[0].GetProperty("createdAt").GetInt64());
     }
     // The server drops a body once every PC saved it, so untitled messages and search fall back to this Mac's copies.
     string DesktopTitle(MessengerApi source,JsonElement row)

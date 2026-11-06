@@ -116,6 +116,9 @@ internal static class MacRuntimeChecks
                 await rosterSource.Send("api/admin/roster-folders", content: settings, method: HttpMethod.Put);
             await Page.MacVerifyPeople();
             var roster = ((ContentPage)Page.Navigation.NavigationStack.Last()).Content!;
+            Check(roster is Grid rosterGrid&&rosterGrid.Children.OfType<Grid>().Any(footer=>Grid.GetRow(footer)==2&&
+                Views(footer).OfType<Button>().Any(button=>button.Text=="선택 0명에게 메시지")),
+                "Mac roster keeps its send action in a fixed footer");
             Check(Views(roster).OfType<CheckBox>().Count(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택") == 2,
                 "Mac roster shows a teacher in both assigned folders");
             Views(roster).OfType<CheckBox>().First(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택").IsChecked = true;
@@ -158,6 +161,10 @@ internal static class MacRuntimeChecks
             }
             var timetable=Views(Page.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-nav-timetable");
             Check(timetable.IsVisible&&await Page.MacVerifyTimetable(),"The enabled timetable opens from the desktop workspace");
+            var timetablePage=(ContentPage)Page.Navigation.NavigationStack.Last();
+            Check(Views(timetablePage.Content).OfType<Button>().Any(button=>button.Text=="한 주")&&
+                Views(timetablePage.Content).OfType<Label>().Any(label=>label.Text=="아직 올라온 시간표가 없습니다"),
+                "Mac timetable shows a dedicated empty state and the weekly view control");
             await Page.MacVerifyApi.Send("api/admin/timetable-feature",content:Json(new JsonObject{["enabled"]=false}));
             await Wait(()=>!timetable.IsVisible&&Page.Navigation.NavigationStack.Count==1);
             Check(!timetable.IsVisible,"Disabling the timetable hides its sidebar item and closes the active timetable view");
