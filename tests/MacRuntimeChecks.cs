@@ -103,26 +103,35 @@ internal static class MacRuntimeChecks
             await Wait(()=>Page.MacVerifyConnected);
             var rosterSource = Page.MacVerifyApi;
             var sample = await AddRosterTeacher(rosterSource, "roster.sample", "가상 교사 가");
-            await AddRosterTeacher(rosterSource, "roster.other", "가상 교사 나");
-            using (var classification = Json(new JsonObject { ["grades"] = new JsonArray(1, 2), ["duties"] = new JsonArray("담임", "방송") }))
-                await rosterSource.Send($"api/admin/users/{sample}/roster-classification", content: classification, method: HttpMethod.Put);
+            var other = await AddRosterTeacher(rosterSource, "roster.other", "가상 교사 나");
+            var parent = Guid.NewGuid().ToString("N");
+            var child = Guid.NewGuid().ToString("N");
+            using (var settings = Json(new JsonObject
+            {
+                ["revision"] = (await rosterSource.Get("api/admin/roster-folders")).GetProperty("revision").GetInt32(),
+                ["folders"] = new JsonArray(
+                    new JsonObject { ["id"] = parent, ["parentId"] = null, ["name"] = "가상 프로젝트", ["memberIds"] = new JsonArray(sample) },
+                    new JsonObject { ["id"] = child, ["parentId"] = parent, ["name"] = "가상 준비팀", ["memberIds"] = new JsonArray(sample, other) })
+            }))
+                await rosterSource.Send("api/admin/roster-folders", content: settings, method: HttpMethod.Put);
             await Page.MacVerifyPeople();
             var roster = ((ContentPage)Page.Navigation.NavigationStack.Last()).Content!;
-            var mode = Views(roster).OfType<Picker>().Single();
-            mode.SelectedIndex = 1;
             Check(Views(roster).OfType<CheckBox>().Count(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택") == 2,
-                "Mac roster shows a teacher in both assigned grades");
+                "Mac roster shows a teacher in both assigned folders");
             Views(roster).OfType<CheckBox>().First(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택").IsChecked = true;
             Check(Views(roster).OfType<CheckBox>().Where(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택").All(box => box.IsChecked),
                 "Mac roster checks duplicate entries for one teacher together");
-            mode.SelectedIndex = 3;
-            Check(!Views(roster).OfType<CheckBox>().Any(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택"),
-                "Mac unclassified roster hides assigned teachers");
+            Check(Views(roster).OfType<Button>().Any(button => button.Text.Contains("미분류")),
+                "Mac roster shows a separate folder for unassigned teachers");
+            var filter = Views(roster).OfType<Entry>().Single();
+            filter.Text = "가상 준비팀";
+            Check(Views(roster).OfType<CheckBox>().Single(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택").IsChecked,
+                "Mac folder search preserves previously selected recipients");
             Views(roster).OfType<CheckBox>().Single(box => SemanticProperties.GetDescription(box) == "가상 교사 나 선택").IsChecked = true;
             var sendSelection = Views(roster).OfType<Button>().Single(button => button.Text == "선택 2명에게 메시지");
             ((IButtonController)sendSelection).SendClicked();
             await Wait(() => Page.Navigation.NavigationStack.LastOrDefault() is ContentPage page && Views(page.Content!).OfType<Label>().Any(label => label.Text == "받는 사람 2명"));
-            Check(true, "Mac roster selection opens the composer with both recipients across views");
+            Check(true, "Mac roster selection opens the composer with both recipients");
             await Page.Navigation.PopAsync();
             await Page.Navigation.PopAsync();
             var largePath=Path.Combine(Folder,"대용량 시험.txt");

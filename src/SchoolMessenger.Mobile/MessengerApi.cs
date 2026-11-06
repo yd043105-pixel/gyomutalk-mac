@@ -223,7 +223,7 @@ internal record MobileEmpty;
 [JsonSerializable(typeof(OfficeBookingRequest))]
 [JsonSerializable(typeof(OfficeRevision))]
 [JsonSerializable(typeof(JsonElement))]
-[JsonSerializable(typeof(RosterClassification))]
+[JsonSerializable(typeof(RosterFolders))]
 [JsonSerializable(typeof(MessageFormat))]
 [JsonSerializable(typeof(SchoolMessenger.Contracts.FeedbackRequest))]
 [JsonSerializable(typeof(TimetableSwapPlanRequest))]

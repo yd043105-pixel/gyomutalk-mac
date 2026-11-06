@@ -90,41 +90,52 @@ public sealed partial class MessengerPage
     {using var content=new StringContent(payload.ToJsonString(),Encoding.UTF8,"application/json");return await source.Send(path,content:content,method:method);}
     async Task MacPeople()
     {
-        var source=api!;var version=epoch;var people=await source.Get("api/users");if(!Current(source,version))return;
+        var source=api!;var version=epoch;var people=await source.Get("api/users");
+        RosterFolder[]? folders = null;
+        try { folders = (await source.Get("api/roster-folders")).Deserialize(MobileJson.Default.RosterFolders)?.Folders; }
+        catch (MessengerApiRefusal e) when (e.Status == 404) { }
+        if(!Current(source,version))return;
         var directory = people.EnumerateArray().Select(person => (
             Person: person,
             Id: person.GetProperty("id").GetString()!,
             Name: person.GetProperty("name").GetString()!,
-            Department: person.GetProperty("department").GetString() ?? "교직원",
-            Classification: person.TryGetProperty("classification", out var value) && value.ValueKind == JsonValueKind.Object
-                ? value.Deserialize(MobileJson.Default.RosterClassification) ?? RosterClassification.Empty : RosterClassification.Empty)).ToArray();
+            Department: person.GetProperty("department").GetString() ?? "교직원")).ToDictionary(row => row.Id);
         var page=DesktopPage("조직도");var stack=new VerticalStackLayout{Padding=20,Spacing=10};((Grid)page.Content).Add(new ScrollView{Content=stack},0,1);
-        var search=new Entry{ClassId="school-field",Placeholder="이름·부서·조직도 분류 검색",FontSize=16,TextColor=Navy,PlaceholderColor=Muted};stack.Add(DesktopPanel(search,8));
+        var search=new Entry{ClassId="school-field",Placeholder="이름·부서·폴더 검색",FontSize=16,TextColor=Navy,PlaceholderColor=Muted};stack.Add(DesktopPanel(search,8));
         var selection = new HashSet<string>();
         var send = DesktopButton("선택 0명에게 메시지", () => MacCompose(selectedIds: selection.ToArray()), true);
         send.IsEnabled = false;
-        var mode = new Picker { Title = "조직도 분류", ItemsSource = new[] { "부서별", "학년별", "담당업무별", "미분류" }, SelectedIndex = 0 };
-        var tools = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) }, ColumnSpacing = 8 };
-        tools.Add(mode); tools.Add(send, 1); stack.Add(tools);
+        send.HorizontalOptions = LayoutOptions.End; stack.Add(send);
         var rows=new VerticalStackLayout{Spacing=4};stack.Add(rows);
         var checks = new List<(CheckBox Check, string Id)>();
+        var collapsed = new HashSet<string>();
         void Show()
         {
             rows.Clear(); checks.Clear();
-            var view = (RosterView)Math.Max(0, mode.SelectedIndex);
             var query = search.Text?.Trim() ?? "";
-            var groups = directory.Where(row => (row.Name + " " + row.Department).Contains(query, StringComparison.OrdinalIgnoreCase) || row.Classification.Matches(query))
-                .SelectMany(row => row.Classification.Groups(view, row.Department).Select(label => (Label: label, Row: row)))
-                .GroupBy(row => row.Label, row => row.Row, StringComparer.OrdinalIgnoreCase).OrderBy(group => group.Key);
-            foreach(var group in groups)
+            var groups = RosterGroup.Build(folders, directory.Values.Select(row => (row.Id, row.Name + " · " + row.Department, row.Department)).ToArray(), query);
+            foreach (var group in groups) AddGroup(group, 0);
+            if (rows.Children.Count == 0) rows.Add(Text("표시할 교직원이 없습니다.", 14));
+
+            void AddGroup(RosterGroup group, int indent)
             {
-                rows.Add(DesktopPanel(Text(group.Key+" · "+group.Count()+"명",12,true),10,Color.FromArgb("#F3F6FB")));
-                foreach(var row in group.OrderBy(p => p.Name))
+                var expanded = query.Length > 0 || !collapsed.Contains(group.Key);
+                var header = DesktopButton((expanded ? "⌄ " : "› ") + group.Name + " · " + group.AllIds().Length + "명", () =>
+                {
+                    if (!collapsed.Add(group.Key)) collapsed.Remove(group.Key);
+                    Show(); return Task.CompletedTask;
+                });
+                header.HorizontalOptions = LayoutOptions.Start;
+                header.Margin = new Thickness(indent, 0, 0, 0);
+                rows.Add(header);
+                if (!expanded) return;
+                foreach (var child in group.Children) AddGroup(child, indent + 20);
+                foreach(var row in group.DirectIds.Select(id => directory[id]).OrderBy(p => p.Name))
                 {
                     var person = row.Person;
                     var online=person.GetProperty("online").GetBoolean();var away=person.GetProperty("away").GetBoolean();var phone=person.GetProperty("mobile").GetBoolean();
                     var status=online?(away?"자리비움":"온라인"):phone?"휴대폰":"오프라인";var color=online?(away?Color.FromArgb("#A87812"):Color.FromArgb("#218568")):phone?Blue:Muted;
-                    var line=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=8,Padding=new Thickness(12,0)};
+                    var line=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=8,Padding=new Thickness(12 + indent,0,12,0)};
                     var check = new CheckBox { IsChecked = selection.Contains(row.Id), VerticalOptions = LayoutOptions.Center };
                     SemanticProperties.SetDescription(check, row.Name + " 선택");
                     checks.Add((check, row.Id)); line.Add(check);
@@ -143,9 +154,8 @@ public sealed partial class MessengerPage
                     var state=Text(status,11);state.TextColor=color;state.VerticalOptions=LayoutOptions.Center;line.Add(state,3);rows.Add(line);
                 }
             }
-            if (rows.Children.Count == 0) rows.Add(Text("표시할 교직원이 없습니다.", 14));
         }
-        search.TextChanged+=(_,_)=>Show();mode.SelectedIndexChanged+=(_,_)=>Show();Show();await Navigation.PushAsync(page);
+        search.TextChanged+=(_,_)=>Show();Show();await Navigation.PushAsync(page);
     }
     async Task MacCompose(string? recipient=null, string[]? selectedIds=null)
     {
