@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: yd043105-pixel/gyomutalk-server
-          ref: 4ad3a97c6aa6f56aceec8ca04a187c4c1499e3b4
+          ref: fe8aa92d3d507b513d5bec94ab918477ce5ce2eb
           path: .test-services
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68

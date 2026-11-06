@@ -18,6 +18,7 @@
     <Compile Include="../SchoolMessenger.Contracts/*.cs" Link="Contracts/%(Filename)%(Extension)" />
     <Compile Include="../SchoolMessenger.Shared/ReleaseNotice.cs;../SchoolMessenger.Shared/MessageText.cs" Link="Shared/%(Filename)%(Extension)" />
     <Compile Include="../SchoolMessenger.Shared/AttachmentDownload.cs" Link="Shared/AttachmentDownload.cs" />
+    <Compile Include="../SchoolMessenger.Shared/FolderAttachment.cs" Link="Shared/FolderAttachment.cs" />
     <EmbeddedResource Include="../SchoolMessenger.Shared/updates.json" LogicalName="SchoolMessenger.UpdateNotes.json" />
     <MauiIcon Include="../SchoolMessenger.Shared/Branding/appicon.svg" ForegroundFile="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#245BC6" />
     <MauiSplashScreen Include="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#245BC6" BaseSize="128,128" />

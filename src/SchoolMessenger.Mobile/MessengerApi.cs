@@ -20,6 +20,7 @@ public sealed class MessengerApi : IDisposable
     public bool Office{get;}
     public Uri Address{get;}
     public JsonElement Session{get;private set;}
+    public long AttachmentLimit{get;private set;}=AttachmentLimits.Message;
     public bool Remember{get;set;}
     public event Action? Invalidated;
     string csrf="";
@@ -55,7 +56,7 @@ public sealed class MessengerApi : IDisposable
             CookieContainer=cookies,AllowAutoRedirect=false,
             SslOptions=new(){RemoteCertificateValidationCallback=(_,certificate,_,errors)=>CertificatePins.Validate(uri,certificate,errors)}
         };
-        transfers=new HttpClient(transferHandler){BaseAddress=uri,Timeout=TimeSpan.FromMinutes(20)};
+        transfers=new HttpClient(transferHandler){BaseAddress=uri,Timeout=TimeSpan.FromHours(2)};
         foreach(var client in new[]{http,transfers})
         {
             client.DefaultRequestHeaders.Add("X-YY-Product",ProductCode);
@@ -94,6 +95,7 @@ public sealed class MessengerApi : IDisposable
         var previousShares=ShareFolder();
         var previouslyAuthenticated=Session.ValueKind==JsonValueKind.Object&&Session.GetProperty("user").ValueKind!=JsonValueKind.Null;
         Session=await Get("api/session");csrf=Session.GetProperty("csrfToken").GetString()!;
+        AttachmentLimit=Session.TryGetProperty("attachmentLimitBytes",out var limit)&&limit.TryGetInt64(out var bytes)&&bytes is >=AttachmentLimits.Message and <=AttachmentLimits.Maximum?bytes:AttachmentLimits.Message;
         if(Session.GetProperty("user").ValueKind==JsonValueKind.Null){DeleteShares(previousShares);SecureStorage.Default.Remove(key);if(previouslyAuthenticated)Invalidated?.Invoke();}
         else if(Session.GetProperty("user").TryGetProperty("activationRequired",out var initial)&&initial.GetBoolean())SecureStorage.Default.Remove(key);
         else if(Session.GetProperty("user").TryGetProperty("passwordChangeRequired",out var change)&&change.GetBoolean())SecureStorage.Default.Remove(key);
@@ -105,6 +107,15 @@ public sealed class MessengerApi : IDisposable
     }
     public async Task<JsonElement> Get(string path)
     {using var response=await http.GetAsync(path);await Check(response);return await Read(response);}
+    public async Task RefreshAttachmentLimit()
+    {
+        try
+        {
+            var limit=(await Get("api/attachments/policy")).GetProperty("maxBytes").GetInt64();
+            if(limit is >=AttachmentLimits.Message and <=AttachmentLimits.Maximum)AttachmentLimit=limit;
+        }
+        catch(MessengerApiRefusal error)when(error.Status==404){}
+    }
     public async Task<JsonElement> Send(string path,object? body=null,HttpContent? content=null,HttpMethod? method=null)
     {
         if(csrf.Length==0)await Refresh();using var request=new HttpRequestMessage(method??HttpMethod.Post,path);request.Headers.Add("X-CSRF-TOKEN",csrf);var payload=body??new MobileEmpty();request.Content=content??JsonContent.Create(payload,MobileJson.Default.GetTypeInfo(payload.GetType())??throw new InvalidOperationException("지원하지 않는 요청입니다."));
@@ -123,7 +134,7 @@ public sealed class MessengerApi : IDisposable
             if(Office&&!external&&stream.CanSeek&&stream.Length>AttachmentLimits.LegacyFile)
             {
                 if(submission)throw new InvalidOperationException("제출 파일은 한 개당 100MB까지입니다.");
-                if(stream.Length>AttachmentLimits.Message)throw new InvalidOperationException("파일당 2GiB까지 첨부할 수 있습니다.");
+                if(stream.Length>AttachmentLimit)throw new InvalidOperationException($"파일당 {AttachmentLimits.Label(AttachmentLimit)}까지 첨부할 수 있습니다.");
                 using var raw=new StreamContent(stream);raw.Headers.ContentType=new("application/octet-stream");
                 raw.Headers.ContentLength=stream.Length;
                 raw.Headers.Add(AttachmentLimits.NameHeader,Uri.EscapeDataString(Path.GetFileName(file.FileName)));

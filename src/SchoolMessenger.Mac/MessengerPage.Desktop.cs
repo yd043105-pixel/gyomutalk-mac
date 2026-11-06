@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Maui.Dispatching;
+using SchoolMessenger.Contracts;
+using SchoolMessenger.Shared;
 
 namespace SchoolMessenger.Mobile;
 
@@ -116,6 +118,7 @@ public sealed partial class MessengerPage
         var source=api!;var version=epoch;var people=await source.Get("api/users");if(!Current(source,version))return;
         var page=DesktopPage("새 메시지");composer=page;var grid=(Grid)page.Content;
         var fields=new Grid{Padding=new Thickness(20,10,20,14),RowSpacing=10,RowDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star),new(GridLength.Auto),new(GridLength.Auto)}};grid.Add(fields,0,1);
+        fields.AutomationId="mac-compose-attachment-drop";
         var recipients=new HashSet<string>();
         var directory=people.EnumerateArray().ToDictionary(p=>p.GetProperty("id").GetString()!,p=>p.GetProperty("name").GetString()+" · "+p.GetProperty("department").GetString());
         if(recipient is not null){if(!directory.ContainsKey(recipient))throw new InvalidOperationException("현재 메시지를 받을 수 없는 계정입니다.");recipients.Add(recipient);}
@@ -146,23 +149,73 @@ public sealed partial class MessengerPage
         var self=MakeAction("나에게 전송",()=>{recipients.Clear();recipients.Add(source.Session.GetProperty("user").GetProperty("id").GetString()!);ShowRecipients();return Task.CompletedTask;});targets.Add(self,1);
         var title=new Entry{ClassId="school-field",Placeholder="제목 · 비워 두면 본문 앞부분이 표시됩니다",MaxLength=200,FontSize=16,TextColor=Navy,PlaceholderColor=Muted,BackgroundColor=Colors.Transparent};fields.Add(DesktopPanel(title,10),0,2);
         var text=new Editor{Placeholder="메시지 내용을 입력하세요",MaxLength=10000,FontSize=18,TextColor=Navy,PlaceholderColor=Muted,BackgroundColor=Colors.Transparent,VerticalOptions=LayoutOptions.Fill};fields.Add(DesktopPanel(text,12),0,3);
-        var files=new List<string>();var names=new VerticalStackLayout{Spacing=4};var fileHint=Text("선택한 파일이 여기에 표시됩니다 · 30일 보관",11);fileHint.TextColor=Muted;names.Add(fileHint);
+        var files=new List<(string Id,string Path,long Size,Label Label)>();var names=new VerticalStackLayout{Spacing=4};var fileHint=Text("",11);fileHint.TextColor=Muted;names.Add(fileHint);
+        void ShowLimit()=>fileHint.Text=$"파일당·합계 {AttachmentLimits.Label(source.AttachmentLimit)} · 파일 또는 폴더 끌어놓기 (폴더는 ZIP)";
+        ShowLimit();
         var fileZone=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Star)},ColumnSpacing=12};names.VerticalOptions=LayoutOptions.Center;fileZone.Add(names,1);
         var error=Text("",12);error.TextColor=Color.FromArgb("#A53A38");fields.Add(error,0,5);
         var client=Guid.NewGuid().ToString("N");JsonObject? pending=null;
         var send=DesktopButton("보내기",null,true);send.AutomationId="mac-send";send.MinimumWidthRequest=112;send.HorizontalOptions=LayoutOptions.End;
         var attach=DesktopButton("파일 첨부");
-        attach.Clicked+=async(_,_)=>
+        var attaching=false;
+        async Task AddAttachment(FileResult file,string key)
         {
+            if(files.Any(x=>x.Path==key))return;
+            if(files.Count>=10)throw new IOException("첨부는 최대 10개입니다.");
+            var size=new FileInfo(file.FullPath).Length;
+            if(size<=0||size>source.AttachmentLimit-files.Sum(x=>x.Size))throw new IOException($"첨부 합계는 {AttachmentLimits.Label(source.AttachmentLimit)}까지입니다.");
+            error.Text="첨부 업로드 중 · "+file.FileName;
+            var upload=await source.Upload(file,false);
+            if(!Current(source,version))return;
+            var name=Text(file.FileName,12);name.MaxLines=1;name.LineBreakMode=LineBreakMode.TailTruncation;names.Add(name);
+            files.Add((upload.GetProperty("id").GetString()!,key,upload.GetProperty("size").GetInt64(),name));error.Text="";
+        }
+        async Task AddFiles(Func<Task> action,bool refresh=true)
+        {
+            if(attaching||pending is not null||!Current(source,version))return;
+            attaching=true;
             attach.IsEnabled=send.IsEnabled=false;
             try
             {
-                preserveComposerOnResume=true;var file=await FilePicker.Default.PickAsync(new PickOptions{PickerTitle="메시지 첨부파일 선택"});if(file is null)return;
-                var upload=await source.Upload(file,false);if(!Current(source,version))return;files.Add(upload.GetProperty("id").GetString()!);fileHint.IsVisible=false;var name=Text(file.FileName,12);name.MaxLines=1;name.LineBreakMode=LineBreakMode.TailTruncation;names.Add(name);
+                if(refresh){await source.RefreshAttachmentLimit();ShowLimit();}
+                await action();
             }
             catch(Exception e){error.Text=e.Message;}
-            finally{send.IsEnabled=true;attach.IsEnabled=pending is null;}
-        };fileZone.Add(attach);fields.Add(DesktopPanel(fileZone,10,Color.FromArgb("#F3F6FB")),0,4);
+            finally{attaching=false;send.IsEnabled=true;attach.IsEnabled=pending is null;}
+        }
+        attach.Clicked+=async(_,_)=>await AddFiles(async()=>
+        {
+            preserveComposerOnResume=true;
+            var file=await FilePicker.Default.PickAsync(new PickOptions{PickerTitle="메시지 첨부파일 선택"});
+            if(file is not null&&Current(source,version))await AddAttachment(file,file.FullPath);
+        });
+        fileZone.Add(attach);fields.Add(DesktopPanel(fileZone,10,Color.FromArgb("#F3F6FB")),0,4);
+        MacAttachmentDrop.Connect(fields,()=>!attaching&&pending is null&&send.IsEnabled,providers=>AddFiles(async()=>
+        {
+            if(providers.Length>10-files.Count)throw new IOException("첨부는 최대 10개입니다.");
+            if(providers.Count(p=>!MacAttachmentDrop.HasFileUrl(p))>1)throw new IOException("이 위치의 폴더는 한 번에 하나씩 끌어놓으세요.");
+            // The OS must receive the load requests during PerformDrop, before the first await.
+            var reads=providers.Select(p=>MacAttachmentDrop.Read(p,source.AttachmentLimit-files.Sum(x=>x.Size))).ToArray();
+            var failures=new List<string>();
+            try{await source.RefreshAttachmentLimit();ShowLimit();}catch(Exception failure){failures.Add(failure.Message);}
+            var canUpload=failures.Count==0;
+            foreach(var read in reads)
+            {
+                try
+                {
+                    using var item=await read;
+                    var path=item.Path;
+                    if(!canUpload||!Current(source,version)||files.Any(f=>f.Path==path))continue;
+                    var isFolder=Directory.Exists(path);
+                    if(isFolder)error.Text="폴더 ZIP 준비 중 · "+Path.GetFileName(path);
+                    using var folder=isFolder?await Task.Run(()=>FolderAttachment.Create(path,source.AttachmentLimit-files.Sum(x=>x.Size))):null;
+                    if(!Current(source,version))continue;
+                    await AddAttachment(new FileResult(folder?.Path??path),path);
+                }
+                catch(Exception failure){failures.Add(failure.Message);}
+            }
+            if(failures.Count>0)error.Text=string.Join("\n",failures.Distinct());
+        },refresh:false));
         var footer=new Grid{Padding=new Thickness(20,10),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)}};var caption=Text("파일 제출 요청 · 마감일",12);caption.TextColor=Muted;caption.VerticalOptions=LayoutOptions.Center;
         var collect=new CheckBox{AutomationId="mac-collect",Color=Blue,VerticalOptions=LayoutOptions.Center};var collectDate=new DatePicker{ClassId="school-field",Format="yyyy.MM.dd",Date=DateTime.UtcNow.AddHours(9).Date.AddDays(7),IsEnabled=false,VerticalOptions=LayoutOptions.Center};collect.CheckedChanged+=(_,e)=>collectDate.IsEnabled=e.Value&&pending is null;
         footer.Add(new HorizontalStackLayout{Spacing=6,Children={collect,caption,collectDate}});footer.Add(send,1);grid.Add(footer,0,2);
@@ -178,14 +231,33 @@ public sealed partial class MessengerPage
                     if(ids.Length==0||string.IsNullOrWhiteSpace(text.Text))throw new InvalidOperationException("받는 사람과 메시지를 입력하세요.");
                     var deadline=collectDate.Date is{} day?DateTime.SpecifyKind(day.Date,DateTimeKind.Unspecified):DateTime.UtcNow.AddHours(9).Date;
                     if(collect.IsChecked&&deadline<DateTime.UtcNow.AddHours(9).Date)throw new InvalidOperationException("제출 마감일은 오늘 이후로 선택하세요.");
-                    pending=new JsonObject{["clientId"]=client,["title"]=title.Text??"",["body"]=text.Text,["recipientIds"]=new JsonArray(ids.Select(x=>(JsonNode?)JsonValue.Create(x)).ToArray()),["attachmentIds"]=new JsonArray(files.Select(x=>(JsonNode?)JsonValue.Create(x)).ToArray()),["all"]=false};
+                    await source.RefreshAttachmentLimit();ShowLimit();
+                    if(files.Sum(f=>f.Size)>source.AttachmentLimit)throw new IOException($"첨부 합계는 {AttachmentLimits.Label(source.AttachmentLimit)}까지입니다.");
+                    if(files.Count>0)
+                    {
+                        using var requested=new StringContent(new JsonArray(files.Select(f=>(JsonNode?)JsonValue.Create(f.Id)).ToArray()).ToJsonString(),Encoding.UTF8,"application/json");
+                        try
+                        {
+                            var staged=(await source.Send("api/attachments/staged/check",content:requested)).EnumerateArray().Select(item=>item.GetString()).ToHashSet();
+                            var expired=files.Where(f=>!staged.Contains(f.Id)).ToArray();
+                            foreach(var file in expired){files.Remove(file);names.Remove(file.Label);}
+                            if(expired.Length>0)throw new IOException("일부 첨부가 만료됐습니다. 해당 파일만 다시 첨부하세요. "+string.Join(", ",expired.Select(f=>f.Label.Text)));
+                        }
+                        catch(MessengerApiRefusal error)when(error.Status==404){}
+                    }
+                    pending=new JsonObject{["clientId"]=client,["title"]=title.Text??"",["body"]=text.Text,["recipientIds"]=new JsonArray(ids.Select(x=>(JsonNode?)JsonValue.Create(x)).ToArray()),["attachmentIds"]=new JsonArray(files.Select(x=>(JsonNode?)JsonValue.Create(x.Id)).ToArray()),["all"]=false};
                     // 서버가 마감일을 한국 시간 23:59:59로 맞춘다.
                     if(collect.IsChecked)pending["submissionDeadline"]=new DateTimeOffset(deadline.AddHours(12),TimeSpan.FromHours(9)).ToUnixTimeMilliseconds();
                     title.IsEnabled=text.IsEnabled=recipientRows.IsEnabled=self.IsEnabled=add.IsEnabled=collect.IsEnabled=collectDate.IsEnabled=false;
                 }
                 await MacSend(source,"api/messages",pending);if(api==source){await Navigation.PopAsync();homeTab="notices";view="sent";offset=0;await Home();}
             }
-            catch(Exception e){error.Text=e.Message;send.Text=pending is null?"보내기":"같은 메시지 다시 전송";}
+            catch(Exception e)
+            {
+                if(e is MessengerApiRefusal {Status:400 or 403 or 404 or 413 or 415 or 422})
+                {pending=null;title.IsEnabled=text.IsEnabled=recipientRows.IsEnabled=self.IsEnabled=add.IsEnabled=collect.IsEnabled=true;collectDate.IsEnabled=collect.IsChecked;}
+                error.Text=e.Message;send.Text=pending is null?"보내기":"같은 메시지 다시 전송";
+            }
             finally{send.IsEnabled=true;attach.IsEnabled=pending is null;}
         };
         await Navigation.PushAsync(page);

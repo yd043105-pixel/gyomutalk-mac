@@ -110,6 +110,18 @@ internal static class MacRuntimeChecks
                 await Page.MacVerifyApi.Send("api/attachments/"+uploaded.GetProperty("id").GetString(),method:HttpMethod.Delete);
             }
             finally{File.Delete(largePath);}
+            var folder=Path.Combine(Folder,"첨부 폴더 시험-"+Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(folder,"빈 폴더"));File.WriteAllText(Path.Combine(folder,"문서.txt"),"synthetic");
+            using(var url=Foundation.NSUrl.FromFilename(folder))
+            using(var provider=new Foundation.NSItemProvider(url,"public.file-url"))
+            using(var droppedFolder=await MacAttachmentDrop.Read(provider,SchoolMessenger.Contracts.AttachmentLimits.Message))
+            using(var archive=await Task.Run(()=>SchoolMessenger.Shared.FolderAttachment.Create(droppedFolder.Path,SchoolMessenger.Contracts.AttachmentLimits.Message)))
+            {
+                var attachment=await Page.MacVerifyApi.Upload(new FileResult(archive.Path),false);
+                using var zip=System.IO.Compression.ZipFile.OpenRead(archive.Path);
+                Check(zip.Entries.Any(e=>e.FullName.EndsWith("/빈 폴더/",StringComparison.Ordinal))&&attachment.GetProperty("name").GetString()!.EndsWith(".zip",StringComparison.Ordinal),"A Mac file-URL drop provider opens a folder and uploads a ZIP with its empty subfolders");
+                await Page.MacVerifyApi.Send("api/attachments/"+attachment.GetProperty("id").GetString(),method:HttpMethod.Delete);
+            }
             var timetable=Views(Page.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-nav-timetable");
             Check(timetable.IsVisible&&await Page.MacVerifyTimetable(),"The enabled timetable opens from the desktop workspace");
             await Page.MacVerifyApi.Send("api/admin/timetable-feature",content:Json(new JsonObject{["enabled"]=false}));
@@ -126,6 +138,7 @@ internal static class MacRuntimeChecks
             var before=await Page.MacVerifyApi.Get("api/messages?box=sent&offset=0");
             var previousIds=before.EnumerateArray().Select(row=>row.GetProperty("id").GetString()).ToHashSet();
             await Page.MacVerifyCompose();var compose=(ContentPage)Page.Navigation.NavigationStack.Last();var controls=Views(compose.Content).ToArray();
+            Check(controls.Single(v=>v.AutomationId=="mac-compose-attachment-drop").Handler?.PlatformView is UIView dropView&&dropView.Interactions.Any(i=>i is UIDropInteraction),"The native message composer installs a folder drop interaction");
             Check(!MacUpdater.CanInstall,"updater defers installation while a message composer is open");
             ((IButtonController)controls.OfType<Button>().Single(b=>b.Text=="나에게 전송")).SendClicked();
             controls.OfType<Entry>().Single().Text="Mac 네이티브 전송 검증";controls.OfType<Editor>().Single().Text="가상 학교 데이터로 Mac 메시지 작성과 수신 연결을 검사합니다.";await Capture("mac-compose.png");
