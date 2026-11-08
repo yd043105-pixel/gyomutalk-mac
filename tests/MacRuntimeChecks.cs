@@ -119,6 +119,8 @@ internal static class MacRuntimeChecks
             Check(roster is Grid rosterGrid&&rosterGrid.Children.OfType<Grid>().Any(footer=>Grid.GetRow(footer)==2&&
                 Views(footer).OfType<Button>().Any(button=>button.Text=="선택 0명에게 메시지")),
                 "Mac roster keeps its send action in a fixed footer");
+            Check(Views(roster).OfType<Border>().Any(mark => mark.StrokeShape is Microsoft.Maui.Controls.Shapes.Ellipse && mark.Content is Label { Text: "가" }),
+                "Mac roster rows show tinted initial avatars");
             Check(Views(roster).OfType<CheckBox>().Count(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택") == 2,
                 "Mac roster shows a teacher in both assigned folders");
             Views(roster).OfType<CheckBox>().First(box => SemanticProperties.GetDescription(box) == "가상 교사 가 선택").IsChecked = true;
@@ -174,7 +176,7 @@ internal static class MacRuntimeChecks
             var people=await Page.MacVerifyApi.Get("api/users");var self=people.EnumerateArray().Single(p=>p.GetProperty("id").GetString()==Page.MacVerifyApi.Session.GetProperty("user").GetProperty("id").GetString());
             Check(self.GetProperty("online").GetBoolean()&&!self.GetProperty("mobile").GetBoolean(),"Server reports Mac as desktop online, without a phone lease");
             Check(Page.MacVerifyReader?.Content is Grid&&Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId=="mac-filter-unread"),"Desktop message list and reader remain side by side with a native unread filter");
-            Check(!Views(Page.Content).OfType<Label>().Any(label=>label.Text?.EndsWith(" · 미확인")==true),"Opening the selected message updates its unread indicator after the server read acknowledgement");
+            Check(!Views(Page.Content).OfType<Microsoft.Maui.Controls.Shapes.Ellipse>().Any(dot=>dot.AutomationId=="mac-unread-dot"&&dot.IsVisible),"Opening the selected message clears its unread dot after the server read acknowledgement");
             Check(!Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId?.StartsWith("school-tab-")==true),"Mac uses desktop navigation without duplicate mobile bottom tabs");await Capture("mac-messages.png");
             var before=await Page.MacVerifyApi.Get("api/messages?box=sent&offset=0");
             var previousIds=before.EnumerateArray().Select(row=>row.GetProperty("id").GetString()).ToHashSet();

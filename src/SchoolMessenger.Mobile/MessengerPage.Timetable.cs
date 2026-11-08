@@ -66,7 +66,7 @@ public sealed partial class MessengerPage
             }
             for(var r=0;r<periods.Length;r++)
             {
-                Put(0,r+1,Text(periods[r]+"교시",12,true),Color.FromArgb("#F3F6FB"));
+                Put(0,r+1,Text(periods[r]+"교시",12,true),Canvas);
                 for(var c=0;c<shown.Length;c++)
                 {
                     var lessons=shown[c].Slots.Where(slot=>slot.Period==periods[r]&&slot.Subject.Length>0).ToArray();
@@ -75,7 +75,7 @@ public sealed partial class MessengerPage
                     {
                         words.Add(Text(lesson.Subject,13,true));
                         var label=Text((mine?lesson.ClassName:lesson.TeacherName)+(lesson.Changed?" · 변경":""),11);
-                        label.TextColor=lesson.Changed?Blue:Muted;words.Add(label);
+                        label.TextColor=lesson.Changed?ChangeInk:Muted;words.Add(label);
                         if(lesson.Changed)
                         {
                             var before=Text("변경 전 "+(lesson.BeforeSubject.Length==0?"수업 없음":lesson.BeforeSubject+" · "+lesson.BeforeTeacher),10);
@@ -83,7 +83,7 @@ public sealed partial class MessengerPage
                         }
                     }
                     if(lessons.Length==0){var blank=Text("—",12);blank.TextColor=Muted;words.Add(blank);}
-                    Put(c+1,r+1,words,lessons.Any(slot=>slot.Changed)?Pale:Colors.White);
+                    Put(c+1,r+1,words,lessons.Any(slot=>slot.Changed)?ChangeTint:Surface);
                 }
             }
             content.Add(DesktopPanel(table,0));
@@ -139,10 +139,10 @@ public sealed partial class MessengerPage
                         var lesson=new VerticalStackLayout{Spacing=4};var name=Text(string.IsNullOrEmpty(subject)?"수업 없음":subject,16,!string.IsNullOrEmpty(subject));if(string.IsNullOrEmpty(subject))name.TextColor=Muted;lesson.Add(name);
                         var teacherName=slot.GetProperty("teacherName").GetString();var owner=(mine?slot.GetProperty("className").GetString()+" · ":"")+teacherName;
                         if(!string.IsNullOrWhiteSpace(owner)){var teacherLabel=Text(owner,12);teacherLabel.TextColor=Muted;lesson.Add(teacherLabel);}
-                        if(changed){var changedLabel=Text("변경",11,true);changedLabel.TextColor=Blue;lesson.Add(changedLabel);}row.Add(lesson,1);
+                        if(changed){var changedLabel=Text("변경",11,true);changedLabel.TextColor=ChangeInk;lesson.Add(changedLabel);}row.Add(lesson,1);
                         var item=new VerticalStackLayout{Spacing=8};item.Add(row);
                         if(changed){var change=Text("변경 전: "+(slot.GetProperty("beforeSubject").GetString() is{Length:>0} previous?previous+" · "+slot.GetProperty("beforeTeacher").GetString():"수업 없음"),12);change.TextColor=Blue;item.Add(change);}
-                        var card=Card(item,14,changed?Pale:null);card.ClassId="timetable-lesson";SemanticProperties.SetDescription(card,label);content.Add(card);
+                        var card=Card(item,14,changed?ChangeTint:null);card.ClassId="timetable-lesson";SemanticProperties.SetDescription(card,label);content.Add(card);
                     }
                     if(slots.Length>0)content.Add(Text(slots.Any(s=>s.GetProperty("source").GetString()=="daily")?"일자별 시간표 적용":"기초시간표 적용",12));
                 }

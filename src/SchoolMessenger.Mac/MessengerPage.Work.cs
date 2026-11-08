@@ -24,19 +24,19 @@ public sealed partial class MessengerPage
     {
         var source=api!;var version=epoch;var rows=await source.Get("api/"+mode+"?offset="+pageIndex*100);if(!Current(source,version))return;
         desktopReader=null;macSubmissionTargets=null;
-        var root=new Grid{RowDefinitions={new(GridLength.Auto),new(GridLength.Star)},BackgroundColor=Colors.White};
-        var toolbar=new Grid{Padding=new Thickness(22,14),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=12,BackgroundColor=Color.FromArgb("#F8FAFD")};
-        var heading=new VerticalStackLayout{Spacing=3};heading.Add(Text("할 일과 파일 제출",19,true));var meta=Text("진행 중인 일은 기한순 · D-Day는 한국 날짜 기준",11);meta.TextColor=Muted;heading.Add(meta);toolbar.Add(heading);
+        var root=new Grid{RowDefinitions={new(GridLength.Auto),new(GridLength.Star)},BackgroundColor=Surface};
+        var toolbar=new Grid{Padding=new Thickness(28,18,24,16),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=12,BackgroundColor=Surface};
+        var heading=new VerticalStackLayout{Spacing=3};heading.Add(Text("할 일과 파일 제출",22,true));var meta=Text("진행 중인 일은 기한순 · D-Day는 한국 날짜 기준",11);meta.TextColor=Muted;heading.Add(meta);toolbar.Add(heading);
         var panes=new Grid{ColumnDefinitions={new(new GridLength(296)),new(GridLength.Star)},ColumnSpacing=1,BackgroundColor=Line};
-        var detail=new ContentView{BackgroundColor=Colors.White};panes.Add(detail,1);
+        var detail=new ContentView{BackgroundColor=Surface};panes.Add(detail,1);
         var switcher=new HorizontalStackLayout{Spacing=6,VerticalOptions=LayoutOptions.Center};
-        void Tab(string key,string label,Func<Task> action){var b=DesktopButton(label,action,key=="add");b.AutomationId="mac-work-"+key;b.FontSize=13;b.MinimumHeightRequest=34;b.Padding=new Thickness(10,5);if(key==mode){b.BackgroundColor=Pale;b.TextColor=Blue;b.BorderColor=Blue;}switcher.Add(b);}
+        void Tab(string key,string label,Func<Task> action){var b=DesktopButton(label,action,key=="add");b.AutomationId="mac-work-"+key;if(key=="add"){b.FontSize=14;b.MinimumHeightRequest=34;b.Padding=new Thickness(14,4);}else Chip(b,key==mode);switcher.Add(b);}
         Tab("todos","나의 할 일",()=>MacWork("todos"));Tab("submission-requests","파일 제출 · 수합",()=>MacWork("submission-requests"));
         if(mode=="todos")Tab("add","할 일 추가",()=>{MacTodo(source,version,null,detail);return Task.CompletedTask;});
-        toolbar.Add(switcher,1);root.Add(toolbar);root.Add(panes,0,1);
-        var empty=new VerticalStackLayout{Spacing=10,VerticalOptions=LayoutOptions.Center,HorizontalOptions=LayoutOptions.Center};empty.Add(new Image{Source="action_calendar.png",HeightRequest=32,WidthRequest=32});
+        toolbar.Add(switcher,1);root.Add(toolbar);var toolbarRule=Rule();toolbarRule.VerticalOptions=LayoutOptions.End;root.Add(toolbarRule);root.Add(panes,0,1);
+        var empty=new VerticalStackLayout{Spacing=10,VerticalOptions=LayoutOptions.Center,HorizontalOptions=LayoutOptions.Center};empty.Add(EmptyArt(mode=="todos"?"File":"Folder"));
         var hint=Text(mode=="todos"?"왼쪽에서 할 일을 선택하거나 새로 추가하세요":"왼쪽에서 제출 요청을 선택하세요",13);hint.TextColor=Muted;empty.Add(hint);detail.Content=empty;
-        var list=new Grid{BackgroundColor=Color.FromArgb("#F5F8FC"),Padding=12,RowSpacing=10,RowDefinitions={new(GridLength.Star),new(GridLength.Auto)}};
+        var list=new Grid{BackgroundColor=Surface,Padding=new Thickness(14,14,14,8),RowSpacing=10,RowDefinitions={new(GridLength.Star),new(GridLength.Auto)}};
         var items=new VerticalStackLayout{Spacing=6};var choices=new List<(Border Row,string Id)>();
         async Task Open(JsonElement row,Border selected)
         {
@@ -55,7 +55,7 @@ public sealed partial class MessengerPage
         list.Add(new ScrollView{Content=items});
         var full=rows.GetArrayLength()==100;var more=DesktopButton(full?"다음 목록":"새로고침",()=>MacWork(mode,null,full?pageIndex+1:pageIndex));more.FontSize=13;more.MinimumHeightRequest=36;list.Add(more,0,1);panes.Add(list);
         desktopContent.Content=root;
-        foreach(var pair in desktopMenu){pair.Value.BackgroundColor=pair.Key=="work"?Pale:Colors.Transparent;pair.Value.TextColor=pair.Key=="work"?Blue:Muted;}
+        SelectRail("work");
         var initial=select is null?-1:choices.FindIndex(c=>c.Id==select);
         if(initial>=0)await Open(rows[initial],choices[initial].Row);else if(select is not null&&mode=="submission-requests")await MacSubmission(source,version,select,detail);
     }
@@ -123,7 +123,7 @@ public sealed partial class MessengerPage
             var exempt=target.GetProperty("exempt").GetBoolean();var done=target.GetProperty("submittedAt").ValueKind!=JsonValueKind.Null;var name=Field(target,"name")??"";
             var state=exempt?"면제":done?target.GetProperty("late").GetBoolean()?"지각 제출":"제출 완료":"미제출";
             var content=new VerticalStackLayout{Spacing=4};var header=new Grid{ColumnDefinitions={new(new GridLength(12)),new(GridLength.Star),new(GridLength.Auto)}};
-            header.Add(new Ellipse{WidthRequest=7,HeightRequest=7,Fill=new SolidColorBrush(exempt?Muted:done?Blue:Color.FromArgb("#B8C4D4")),VerticalOptions=LayoutOptions.Center,HorizontalOptions=LayoutOptions.Start});
+            header.Add(new Ellipse{WidthRequest=7,HeightRequest=7,Fill=new SolidColorBrush(exempt?Faint:done?Success:Line),VerticalOptions=LayoutOptions.Center,HorizontalOptions=LayoutOptions.Start});
             var label=Text(name,13,true);label.MaxLines=1;label.LineBreakMode=LineBreakMode.TailTruncation;label.VerticalOptions=LayoutOptions.Center;header.Add(label,1);content.Add(header);
             foreach(var file in target.GetProperty("files").EnumerateArray())
             {
@@ -131,7 +131,7 @@ public sealed partial class MessengerPage
                 var entry=DesktopButton(fileName+(expired?" (만료)":""),()=>source.ShareFile(fileId,fileName));entry.AutomationId="mac-submission-file";entry.FontSize=11;entry.MinimumHeightRequest=26;entry.Padding=new Thickness(6,3);entry.HorizontalOptions=LayoutOptions.Fill;entry.IsEnabled=!expired;
                 ToolTipProperties.SetText(entry,description);SemanticProperties.SetDescription(entry,description);content.Add(entry);
             }
-            var card=DesktopPanel(content,8,Color.FromArgb("#F8FAFD"));card.MinimumHeightRequest=48;card.AutomationId="mac-submission-target";card.ClassId=state;
+            var card=DesktopPanel(content,8,Subtle);card.MinimumHeightRequest=48;card.AutomationId="mac-submission-target";card.ClassId=state;
             ToolTipProperties.SetText(card,name+" · "+state);SemanticProperties.SetDescription(card,name+" · "+state);
             if(mine&&!closed)
             {

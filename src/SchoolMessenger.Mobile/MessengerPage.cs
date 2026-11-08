@@ -11,7 +11,12 @@ public sealed partial class MessengerPage : ContentPage
     const string ProductName="교무톡";
 #endif
     public static MessengerPage? Active{get;private set;}
+#if MAC_DESKTOP
+    // "A · 맑은 청": ink, accent, muted, line and tint, the same values as the Windows Theme.xaml.
+    static readonly Color Navy=Color.FromArgb("#0F1B2D"),Blue=Color.FromArgb("#2463EB"),Muted=Color.FromArgb("#5B6B80"),Line=Color.FromArgb("#E3E8EF"),Pale=Color.FromArgb("#E8F0FE");
+#else
     static readonly Color Navy=Color.FromArgb("#182C47"),Blue=Color.FromArgb("#245BC6"),Muted=Color.FromArgb("#5A6B82"),Line=Color.FromArgb("#DFE7F1"),Pale=Color.FromArgb("#EAF0FC");
+#endif
 #if MACCATALYST
     const string OfficeSpaceLabel="Mac 교직원 메신저";
 #else
