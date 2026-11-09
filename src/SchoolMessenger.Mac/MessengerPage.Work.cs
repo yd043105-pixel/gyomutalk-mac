@@ -13,10 +13,12 @@ public sealed partial class MessengerPage
     static DateOnly KoreanToday=>DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).DateTime);
     static string? Field(JsonElement value,string name)=>value.TryGetProperty(name,out var p)&&p.ValueKind==JsonValueKind.String?p.GetString():null;
     static string TodoStatus(string? status)=>status switch{"suggested"=>"추천 · 확인 필요","open"=>"진행 중","done"=>"완료",_=>"제외"};
-    static string TodoDeadline(string? value,string? status)
+    // The server keeps the hour ("17:00") beside the date; the Mac shows it and keeps it while the date stays the same.
+    static string? TodoTime(JsonElement row)=>TimeOnly.TryParseExact(Field(row,"dueTime"),"HH:mm",CultureInfo.InvariantCulture,DateTimeStyles.None,out _)?Field(row,"dueTime"):null;
+    static string TodoDeadline(string? value,string? status,string? time=null)
     {
         if(!DateOnly.TryParseExact(value,"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out var due))return "기한 없음";
-        var date=due.ToString("yyyy.MM.dd",CultureInfo.InvariantCulture);if(status is "done" or "dismissed")return date;
+        var date=due.ToString("yyyy.MM.dd",CultureInfo.InvariantCulture)+(time is null?"":" "+time);if(status is "done" or "dismissed")return date;
         var days=due.DayNumber-KoreanToday.DayNumber;return date+" · "+(days>0?"D-"+days:days==0?"D-Day":"기한 지남 "+(-days)+"일");
     }
     static string FileSize(long size)=>size<1024*1024?Math.Max(1,size/1024)+"KB":(size/1024d/1024).ToString("0.0",CultureInfo.InvariantCulture)+"MB";
@@ -48,7 +50,7 @@ public sealed partial class MessengerPage
             var id=row.GetProperty("id").GetString()!;var card=new VerticalStackLayout{Spacing=4};var border=DesktopPanel(card,12,Colors.Transparent);border.StrokeThickness=0;
             var title=DesktopButton((row.GetProperty("title").GetString()??"").ReplaceLineEndings(" "),()=>Open(row,border));title.ClassId="school-story";title.AutomationId="mac-work-row-"+id;title.BackgroundColor=Colors.Transparent;title.BorderWidth=0;title.Padding=0;title.FontSize=15;title.MinimumHeightRequest=28;title.HorizontalOptions=LayoutOptions.Fill;
             title.FontAttributes=mode=="todos"&&Field(row,"status")=="suggested"?FontAttributes.Bold:FontAttributes.None;card.Add(title);
-            var summary=Text(mode=="todos"?TodoStatus(Field(row,"status"))+" · "+TodoDeadline(Field(row,"dueDate"),Field(row,"status")):Field(row,"ownerName")+" · "+row.GetProperty("submittedCount").GetInt32()+"/"+row.GetProperty("targetCount").GetInt32()+"명 제출"+(row.GetProperty("closed").GetBoolean()?" · 종료":""),11);
+            var summary=Text(mode=="todos"?TodoStatus(Field(row,"status"))+" · "+TodoDeadline(Field(row,"dueDate"),Field(row,"status"),TodoTime(row)):Field(row,"ownerName")+" · "+row.GetProperty("submittedCount").GetInt32()+"/"+row.GetProperty("targetCount").GetInt32()+"명 제출"+(row.GetProperty("closed").GetBoolean()?" · 종료":""),11);
             summary.AutomationId="mac-work-summary-"+id;summary.TextColor=Muted;summary.MaxLines=1;summary.LineBreakMode=LineBreakMode.TailTruncation;card.Add(summary);items.Add(border);choices.Add((border,id));
         }
         if(rows.GetArrayLength()==0){var none=Text(mode=="todos"?"등록된 할 일이 없습니다":"주고받은 제출 요청이 없습니다",12);none.TextColor=Muted;items.Add(none);}
@@ -67,7 +69,7 @@ public sealed partial class MessengerPage
         if(item is{} original)
         {
             if(Field(original,"evidence") is{Length:>0} evidence){var quote=Text(evidence,12);quote.TextColor=Muted;stack.Add(quote);}
-            var counter=Text(TodoDeadline(Field(original,"dueDate"),status),15,true);counter.AutomationId="mac-todo-deadline";counter.TextColor=Blue;stack.Add(counter);
+            var counter=Text(TodoDeadline(Field(original,"dueDate"),status,TodoTime(original)),15,true);counter.AutomationId="mac-todo-deadline";counter.TextColor=Blue;stack.Add(counter);
             if(Field(original,"sourceId") is{Length:>0} sourceId){var view=DesktopButton("원본 메시지 보기",()=>OfficeDetail(sourceId));view.HorizontalOptions=LayoutOptions.Start;stack.Add(view);}
         }
         var title=new Entry{ClassId="school-field",AutomationId="mac-todo-title",Placeholder="할 일 제목",MaxLength=200,FontSize=16,TextColor=Navy,PlaceholderColor=Muted,BackgroundColor=Colors.Transparent,Text=item is{} t?Field(t,"title"):""};
@@ -84,7 +86,8 @@ public sealed partial class MessengerPage
         {
             if(!Current(source,version))return;
             var id=item is{} existing?Field(existing,"id"):null;
-            var payload=new JsonObject{["title"]=title.Text??"",["dueDate"]=dated.IsChecked&&date.Date is{} day?day.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture):null,["status"]=statuses[Math.Max(0,picker.SelectedIndex)],["revision"]=item is{} old?old.GetProperty("revision").GetInt32():0};
+            var dueDate=dated.IsChecked&&date.Date is{} day?day.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture):null;
+            var payload=new JsonObject{["title"]=title.Text??"",["dueDate"]=dueDate,["dueTime"]=item is{} kept&&dueDate==Field(kept,"dueDate")?TodoTime(kept):null,["status"]=statuses[Math.Max(0,picker.SelectedIndex)],["revision"]=item is{} old?old.GetProperty("revision").GetInt32():0};
             var saved=await MacSend(source,"api/todos"+(id is null?"":"/"+id),payload,id is null?null:HttpMethod.Patch);
             await MacWork("todos",id??(saved.ValueKind==JsonValueKind.Object?Field(saved,"id"):null));feedback.Text="할 일을 저장했습니다.";
         },true);
