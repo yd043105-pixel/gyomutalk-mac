@@ -70,7 +70,7 @@ public sealed partial class MessengerPage
         var addressHint=Text("관리자 프로그램에 표시된 접속 주소를 입력하세요. 처음 연결할 때 서버 PC에 표시된 연결 확인 코드와 비교합니다.",11);addressHint.TextColor=Muted;body.Add(addressHint);
         System.Action clearSchoolLoginFields=()=>{};var shownAddress=address.Text??"";
         mode.SelectedIndexChanged+=(_,_)=>{shownAddress=Preferences.Default.Get("address-"+mode.SelectedIndex,"");address.Text=shownAddress;help.Text=mode.SelectedIndex==1?"교직원 업무 메시지는 교내망 또는\n학교 VPN에 연결한 뒤 확인하세요.":"교직원 메시지와 학교 업무를 확인하세요.";};
-        var username=Input("아이디");username.Keyboard=Keyboard.Text;var password=Input("비밀번호",true);
+        var username=Input("이름");username.Keyboard=Keyboard.Text;var password=Input("비밀번호",true);
         var remember=new Switch{IsToggled=true};var rememberRow=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)}};
 #if MACCATALYST
         remember.IsToggled=false;

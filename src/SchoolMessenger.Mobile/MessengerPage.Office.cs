@@ -23,16 +23,16 @@ public sealed partial class MessengerPage
     }
     async Task ActivateStaff()
     {
-        var source=api!;Header("개인 계정의 첫 설정","교직원 계정 활성화");tabs.IsVisible=false;
-        body.Add(Text("관리자가 개별 전달한 활성화 번호를 입력하고 개인 비밀번호를 설정하세요. 완료 전에는 업무 자료를 열 수 없습니다.",14));
-        var code=Input("개별 활성화 번호");var password=Input("새 개인 비밀번호 · 12~128자",true);var confirm=Input("새 비밀번호 확인",true);
+        var source=api!;Header("개인 계정의 첫 설정","교직원 계정 첫 설정");tabs.IsVisible=false;
+        body.Add(Text("처음 로그인하셨습니다. 앞으로 쓸 개인 비밀번호를 정하고 안내를 확인하세요. 마치기 전에는 업무 자료를 열 수 없습니다.",14));
+        var password=Input("새 개인 비밀번호 · 12~128자",true);var confirm=Input("새 비밀번호 확인",true);
         var policy=await source.Get("api/registration/policy");var agreement=AddPolicies(body,policy);
-        Action("계정 활성화",async()=>
+        Action("첫 설정 마치기",async()=>
         {
             if(password.Text!=confirm.Text)throw new InvalidOperationException("비밀번호 확인이 일치하지 않습니다.");
-            try{await source.Send("api/activate",new StaffActivation(code.Text??"",password.Text??"",agreement()));}
+            try{await source.Send("api/activate",new StaffActivation(password.Text??"",agreement()));}
             finally{password.Text=confirm.Text="";}
-            source.Remember=false;await source.Refresh();source.Dispose();api=null;Login();feedback.Text="활성화 완료. 개인 비밀번호로 로그인하세요.";
+            source.Remember=false;await source.Refresh();source.Dispose();api=null;Login();feedback.Text="설정을 마쳤습니다. 방금 정한 비밀번호로 로그인하세요.";
         },true);
         Action("로그아웃",async()=>{try{await source.Logout();}finally{source.Dispose();api=null;Login();}});
     }
