@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Public beta releases use 0.0.x; the first stable release will use 1.0.0. -->
-    <Version>0.1.2</Version>
+    <Version>0.1.3</Version>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RuntimeFrameworkVersion Condition="'$(MSBuildProjectName)' == 'SchoolMessenger.Server' Or '$(MSBuildProjectName)' == 'SchoolMessenger.AnnouncementServer' Or '$(MSBuildProjectName)' == 'SchoolMessenger.Desktop'">10.0.13</RuntimeFrameworkVersion>
     <Nullable>enable</Nullable>
