@@ -120,7 +120,7 @@ public sealed partial class MessengerPage
         desktopContent.Content=desktopShared;desktopReader=null;
         var info=new VerticalStackLayout{Spacing=5};info.Add(Text(name,18,true));info.Add(Text("교직원 계정",12));body.Add(Card(info));
         SettingRow("비밀번호 변경",()=>{OfficePasswordChange();return Task.CompletedTask;});
-        SettingRow("약관·개인정보 안내",PolicyMenu);SettingRow("개인정보 열람·정정·삭제 요청",PrivacyRequests);
+        SettingRow("개인정보 안내",PolicyMenu);SettingRow("개인정보 열람·정정·삭제 요청",PrivacyRequests);
         SettingRow("업데이트 내역",()=>ShowUpdates(true));SettingRow("오류 신고 · 개선 의견",Feedback);
         SettingRow("프로그램 업데이트",()=>MacUpdater.Settings(this));
         SettingRow("로그아웃",async()=>{try{await source.Logout();}finally{source.Dispose();if(api==source)api=null;Login();}});

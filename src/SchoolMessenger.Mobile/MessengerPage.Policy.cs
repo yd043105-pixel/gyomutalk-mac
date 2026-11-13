@@ -18,7 +18,8 @@ public sealed partial class MessengerPage
     }
     Func<RegistrationAcceptance> AddPolicies(VerticalStackLayout stack,JsonElement policy)
     {
-        stack.Add(Text("약관·개인정보 안내",20,true));stack.Add(Text(policy.GetProperty("message").GetString()!,13));
+        // A school server from 0.1.3 on has no terms to agree to and sends no documents.
+        if(policy.GetProperty("documents").GetArrayLength()>0){stack.Add(Text("약관·개인정보 안내",20,true));stack.Add(Text(policy.GetProperty("message").GetString()!,13));}
         var choices=new Dictionary<string,CheckBox>();
         foreach(var document in policy.GetProperty("documents").EnumerateArray())
         {
@@ -38,8 +39,9 @@ public sealed partial class MessengerPage
     }
     async Task PolicyMenu()
     {
-        var policy=await api!.Get("api/registration/policy");var page=new ContentPage{Title="약관·개인정보 안내",BackgroundColor=BackgroundColor};var stack=new VerticalStackLayout{Padding=24,Spacing=16};page.Content=new ScrollView{Content=stack};
-        stack.Add(Text(policy.GetProperty("message").GetString()!,14));
+        var policy=await api!.Get("api/registration/policy");var page=new ContentPage{Title="개인정보 안내",BackgroundColor=BackgroundColor};var stack=new VerticalStackLayout{Padding=24,Spacing=16};page.Content=new ScrollView{Content=stack};
+        if(policy.GetProperty("message").GetString() is{Length:>0} message)stack.Add(Text(message,14));
+        stack.Add(Text("자료는 학교 서버 PC와 선생님 기기에만 저장하며, 관리는 학교 정보관리자 선생님이 맡습니다.",14));
         stack.Add(Text("처리 주체: "+policy.GetProperty("operator").GetString()+"\n문의: "+policy.GetProperty("contact").GetString(),14));
         foreach(var document in policy.GetProperty("documents").EnumerateArray()){var open=new Button{Text=document.GetProperty("title").GetString()};open.Clicked+=async(_,_)=>await ShowPolicy(policy,document);stack.Add(open);}
         await Navigation.PushAsync(page);

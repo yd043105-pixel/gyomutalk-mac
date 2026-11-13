@@ -10,7 +10,7 @@ public sealed partial class MessengerPage
     {
         var source=api!;Header("개인 비밀번호 설정",required?"첫 로그인 · 비밀번호 변경":"비밀번호 변경");tabs.IsVisible=false;
         body.Add(Text(required?"초기 비밀번호를 변경해야 업무 자료를 열 수 있습니다.":"변경 후 모든 기기에서 다시 로그인해야 합니다.",14));
-        var current=Input("현재 비밀번호",true);var next=Input("새 비밀번호 · 12~128자",true);var confirm=Input("새 비밀번호 확인",true);
+        var current=Input("현재 비밀번호",true);var next=Input("새 비밀번호 · 8~128자",true);var confirm=Input("새 비밀번호 확인",true);
         Action("변경 후 다시 로그인",async()=>
         {
             if(next.Text!=confirm.Text)throw new InvalidOperationException("새 비밀번호 확인이 일치하지 않습니다.");
@@ -25,7 +25,7 @@ public sealed partial class MessengerPage
     {
         var source=api!;Header("개인 계정의 첫 설정","교직원 계정 첫 설정");tabs.IsVisible=false;
         body.Add(Text("처음 로그인하셨습니다. 앞으로 쓸 개인 비밀번호를 정하고 안내를 확인하세요. 마치기 전에는 업무 자료를 열 수 없습니다.",14));
-        var password=Input("새 개인 비밀번호 · 12~128자",true);var confirm=Input("새 비밀번호 확인",true);
+        var password=Input("새 개인 비밀번호 · 8~128자",true);var confirm=Input("새 비밀번호 확인",true);
         var policy=await source.Get("api/registration/policy");var agreement=AddPolicies(body,policy);
         Action("첫 설정 마치기",async()=>
         {
