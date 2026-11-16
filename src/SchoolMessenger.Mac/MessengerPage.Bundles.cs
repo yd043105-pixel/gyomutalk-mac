@@ -69,13 +69,14 @@ public sealed partial class MessengerPage
             var subject = new Picker { ClassId = "school-field", Title = "과목", AutomationId = "mac-bundle-subject" };
             var pickers = new Grid { ColumnDefinitions = { new(new GridLength(140)), new(GridLength.Star) }, ColumnSpacing = 10 };
             VerticalStackLayout Field(string label, View input) { var stack = new VerticalStackLayout { Spacing = 4 }; var caption = Text(label, 12); caption.TextColor = Muted; stack.Add(caption); stack.Add(input); return stack; }
-            pickers.Add(Field("1. 학년", grade)); pickers.Add(Field("2. 과목", subject), 1); form.Add(pickers);
+            // Pickers sit in a bordered box like the other fields.
+            pickers.Add(Field("1. 학년", DesktopPanel(grade, 6))); pickers.Add(Field("2. 과목", DesktopPanel(subject, 6)), 1); form.Add(pickers);
             var classesCaption = Text("3. 분반 · 함께 움직일 반을 체크", 12); classesCaption.TextColor = Muted; form.Add(classesCaption);
             var classes = new VerticalStackLayout { Spacing = 2 }; form.Add(DesktopPanel(classes, 10, Subtle));
             var count = Text("", 12, true); form.Add(count);
             var picked = new FlexLayout { Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap }; form.Add(picked);
             var name = new Entry { ClassId = "school-field", Placeholder = "묶음 이름 (예: 3학년 선택 A)", MaxLength = 60, AutomationId = "mac-bundle-name" };
-            form.Add(Field("묶음 이름", name));
+            form.Add(Field("묶음 이름", DesktopPanel(name, 6)));
             var save = DesktopButton("묶음으로 저장", null, true); save.HorizontalOptions = LayoutOptions.Start; save.AutomationId = "mac-bundle-save"; form.Add(save);
             string[] subjects = [];
             static int Number(string room) { var m = Regex.Match(room, @"(\d+)\s*반"); return m.Success ? int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture) : int.MaxValue; }

@@ -20,13 +20,20 @@ public sealed partial class MessengerPage
         if(selectedClass is not null){var index=Array.FindIndex(rooms,r=>r.GetProperty("id").GetString()==selectedClass);if(index>=0)scope.SelectedIndex=index+(teacher?1:0);}
         stack.Add(Text("시간표",22,true));
         var hint=Text(teacher?"내 수업과 학급별 시간표":"학급별 시간표",12);hint.TextColor=Muted;stack.Add(hint);
-        var filters=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Star)},ColumnSpacing=10};
-        var dates=new VerticalStackLayout{Spacing=4};dates.Add(Text("조회 날짜",11,true));dates.Add(date);
-        var classes=new VerticalStackLayout{Spacing=4};classes.Add(Text("조회할 시간표",11,true));classes.Add(scope);filters.Add(dates);filters.Add(classes,1);stack.Add(Card(filters,12));
+        // One control row as on Windows: day or week, the week itself with arrows and "today", the timetable to show on the right.
+        // The date picker stays as the place the chosen day is kept.
         SemanticProperties.SetDescription(date,"조회 날짜 · 한국 시간");SemanticProperties.SetDescription(scope,"조회할 시간표");
-        var error=Text("",13);error.TextColor=Color.FromArgb("#A53A38");stack.Add(error);
         var dayButton=DesktopButton("하루");var weekButton=DesktopButton("한 주");
-        var actions=new HorizontalStackLayout{Spacing=8,Children={dayButton,weekButton}};stack.Add(actions);
+        foreach(var mode in new[]{dayButton,weekButton}){mode.MinimumHeightRequest=32;mode.Padding=new Thickness(14,2);mode.FontSize=14;mode.BorderWidth=0;}
+        var segment=new Border{Content=new HorizontalStackLayout{Spacing=2,Children={dayButton,weekButton}},Padding=3,BackgroundColor=Subtle,Stroke=Line,StrokeThickness=1,StrokeShape=new Microsoft.Maui.Controls.Shapes.RoundRectangle{CornerRadius=Radius},VerticalOptions=LayoutOptions.Center};
+        var range=Text("",14,true);range.VerticalOptions=LayoutOptions.Center;range.AutomationId="mac-timetable-range";
+        Button Arrow(string label,string name){var arrow=new Button{Text=label,FontSize=18,WidthRequest=32,MinimumHeightRequest=32,Padding=0,BackgroundColor=Colors.Transparent,BorderWidth=0,TextColor=Blue,VerticalOptions=LayoutOptions.Center};SemanticProperties.SetDescription(arrow,name);ToolTipProperties.SetText(arrow,name);return arrow;}
+        var previous=Arrow("‹","이전");var next=Arrow("›","다음");
+        var today=new Button{Text="오늘",FontSize=14,BackgroundColor=Colors.Transparent,BorderWidth=0,TextColor=Blue,Padding=new Thickness(8,2),VerticalOptions=LayoutOptions.Center};
+        var controls=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star),new(new GridLength(240))},ColumnSpacing=6};
+        controls.Add(segment);controls.Add(previous,1);controls.Add(range,2);controls.Add(next,3);controls.Add(today,4);
+        scope.VerticalOptions=LayoutOptions.Center;controls.Add(DesktopPanel(scope,6),6);stack.Add(controls);
+        var error=Text("",13);error.TextColor=Color.FromArgb("#A53A38");stack.Add(error);
         TimetableDay[] printDays=[];string printTitle="";
         var printButton=DesktopButton("보고 있는 시간표 인쇄");printButton.IsEnabled=false;
         var content=new VerticalStackLayout{Spacing=10};stack.Add(content);
@@ -42,48 +49,54 @@ public sealed partial class MessengerPage
             stack.Add(scheduleTools);
         }
         printButton.Clicked+=(_,_)=>PrintMacSchedule(printTitle,printDays,error);
-        bool loading=false,loaded=false;
+        bool loading=false,loaded=false,current=selectedDate is null;
         void WeekGrid(TimetableDay[] week,bool mine)
         {
             var shown=week.Where(day=>DateOnly.TryParse(day.Date,out var value)&&
                 (value.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)||day.Slots.Any(s=>s.Subject.Length>0))).ToArray();
             var periods=Enumerable.Range(1,7).Concat(shown.SelectMany(day=>day.Slots)
                 .Where(slot=>slot.Subject.Length>0).Select(slot=>slot.Period)).Distinct().Order().ToArray();
-            var table=new Grid{ColumnSpacing=1,RowSpacing=1,BackgroundColor=Line};
-            table.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(56)));
+            // Rows divided by thin lines, lessons as tinted chips, today's column lightly shaded: the Windows week view.
+            var todayKey=DateTime.UtcNow.AddHours(9).ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);
+            var table=new Grid{ColumnSpacing=0,RowSpacing=1,BackgroundColor=Line};
+            table.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(64)));
             foreach(var _ in shown)table.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
             for(var i=0;i<=periods.Length;i++)table.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            void Put(int column,int row,View item,Color background)
+            void Put(int column,int row,View item,Color background,double padding=4)
             {
-                var cell=new Border{Content=item,Padding=new Thickness(5,4),BackgroundColor=background,StrokeThickness=0};
+                var cell=new Border{Content=item,Padding=new Thickness(padding,3),BackgroundColor=background,StrokeThickness=0};
                 table.Add(cell,column,row);
             }
-            Put(0,0,Text("교시",12,true),Pale);
+            var corner=Text("교시",12);corner.TextColor=Muted;corner.HorizontalTextAlignment=TextAlignment.Center;Put(0,0,corner,Subtle,6);
             for(var c=0;c<shown.Length;c++)
             {
-                var when=DateOnly.Parse(shown[c].Date,CultureInfo.InvariantCulture);
-                Put(c+1,0,Text(when.ToString("ddd M.d",CultureInfo.GetCultureInfo("ko-KR")),12,true),Pale);
+                var isToday=shown[c].Date==todayKey;var when=DateOnly.Parse(shown[c].Date,CultureInfo.InvariantCulture);
+                var day=Text(when.ToString("ddd M.d",CultureInfo.GetCultureInfo("ko-KR"))+(isToday?" · 오늘":""),13,isToday);day.TextColor=isToday?Blue:Navy;day.HorizontalTextAlignment=TextAlignment.Center;
+                Put(c+1,0,day,isToday?Pale:Subtle,6);
             }
             for(var r=0;r<periods.Length;r++)
             {
-                Put(0,r+1,Text(periods[r]+"교시",12,true),Canvas);
+                var bell=SchoolDay.Label(1,periods[r]).Split(" · ",2,StringSplitOptions.None);var period=new VerticalStackLayout{Spacing=0,VerticalOptions=LayoutOptions.Center};
+                period.Add(Text(periods[r]+"교시",12,true));if(bell.Length>1&&bell[1].Contains(':')){var clock=Text(bell[1].Split('–')[0],10);clock.TextColor=Muted;period.Add(clock);}
+                Put(0,r+1,period,Surface,8);
                 for(var c=0;c<shown.Length;c++)
                 {
                     var lessons=shown[c].Slots.Where(slot=>slot.Period==periods[r]&&slot.Subject.Length>0).ToArray();
                     var words=new VerticalStackLayout{Spacing=3};
                     foreach(var lesson in lessons)
                     {
-                        words.Add(Text(lesson.Subject,13,true));
-                        var label=Text((mine?lesson.ClassName:lesson.TeacherName)+(lesson.Changed?" · 변경":""),11);
-                        label.TextColor=lesson.Changed?ChangeInk:Muted;words.Add(label);
+                        var chip=new VerticalStackLayout{Spacing=0};
+                        var subject=Text(lesson.Subject,13,true);subject.TextColor=lesson.Changed?ChangeInk:Blue;subject.MaxLines=1;subject.LineBreakMode=LineBreakMode.TailTruncation;chip.Add(subject);
+                        var label=Text((mine?lesson.ClassName:lesson.TeacherName)+(lesson.Changed?" · 변경":""),11);label.TextColor=lesson.Changed?ChangeInk:Muted;label.MaxLines=1;label.LineBreakMode=LineBreakMode.TailTruncation;chip.Add(label);
                         if(lesson.Changed)
                         {
                             var before=Text("변경 전 "+(lesson.BeforeSubject.Length==0?"수업 없음":lesson.BeforeSubject+" · "+lesson.BeforeTeacher),10);
-                            before.TextColor=Muted;words.Add(before);
+                            before.TextColor=Muted;chip.Add(before);
                         }
+                        words.Add(new Border{Content=chip,Padding=new Thickness(7,3),BackgroundColor=lesson.Changed?ChangeTint:Pale,StrokeThickness=0,StrokeShape=new Microsoft.Maui.Controls.Shapes.RoundRectangle{CornerRadius=6}});
                     }
-                    if(lessons.Length==0){var blank=Text("—",12);blank.TextColor=Muted;words.Add(blank);}
-                    Put(c+1,r+1,words,lessons.Any(slot=>slot.Changed)?ChangeTint:Surface);
+                    if(lessons.Length==0)words.HeightRequest=34;
+                    Put(c+1,r+1,words,shown[c].Date==todayKey?Subtle:Surface,3);
                 }
             }
             content.Add(DesktopPanel(table,0));
@@ -102,7 +115,9 @@ public sealed partial class MessengerPage
                     var rev=value.GetProperty("revision").GetInt64();if(revision is not null&&revision!=rev)throw new InvalidOperationException("조회 중 시간표가 변경되었습니다. 다시 조회하세요.");revision=rev;days.Add(value);
                 }
                 printDays=days.Select(d=>d.Deserialize(MobileJson.Default.TimetableDay)!).ToArray();
-                dayButton.BackgroundColor=weekly?Colors.White:Pale;weekButton.BackgroundColor=weekly?Pale:Colors.White;
+                current=weekly;dayButton.BackgroundColor=weekly?Colors.Transparent:Colors.White;weekButton.BackgroundColor=weekly?Colors.White:Colors.Transparent;
+                dayButton.FontAttributes=weekly?FontAttributes.None:FontAttributes.Bold;weekButton.FontAttributes=weekly?FontAttributes.Bold:FontAttributes.None;
+                range.Text=weekly?first.ToString("M.d",CultureInfo.InvariantCulture)+" ~ "+first.AddDays(4).ToString("M.d",CultureInfo.InvariantCulture):selected.ToString("M월 d일 dddd",CultureInfo.GetCultureInfo("ko-KR"));
                 printTitle=scopes[scope.SelectedIndex]+" 시간표";printButton.IsEnabled=printDays.Any(d=>d.PublishedAt>0);
                 if(!printButton.IsEnabled&&!printDays.Any(day=>day.Slots.Any(slot=>slot.Subject.Length>0)))
                 {
@@ -152,6 +167,10 @@ public sealed partial class MessengerPage
             finally{loading=false;date.IsEnabled=scope.IsEnabled=dayButton.IsEnabled=weekButton.IsEnabled=true;}
         }
         dayButton.Clicked+=async(_,_)=>await Show(false);weekButton.Clicked+=async(_,_)=>await Show(true);
+        async Task Move(int step){if(date.Date is{} day){date.Date=day.AddDays(current?step*7:step);await Show(current);}}
+        previous.Clicked+=async(_,_)=>await Move(-1);next.Clicked+=async(_,_)=>await Move(1);
+        today.Clicked+=async(_,_)=>{date.Date=DateTime.UtcNow.AddHours(9).Date;await Show(current);};
+        scope.SelectedIndexChanged+=async(_,_)=>{if(!loading)await Show(current);};
         await Show(selectedDate is null);if(!MacScheduleActive(source))return false;timetablePage=page;await Navigation.PushAsync(page);return loaded;
     }
 }
