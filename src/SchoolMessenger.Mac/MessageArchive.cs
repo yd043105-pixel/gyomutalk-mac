@@ -81,6 +81,8 @@ public sealed class MessageArchive
         if(Load(Id(server)) is not{} local)return server;
         var merged=JsonNode.Parse(server.GetRawText())!;var message=merged["message"]!;var copy=local.GetProperty("message");
         message["body"]=copy.GetProperty("body").GetString();
+        // The server drops the title as well once every PC saved the message; this Mac's copy still has it.
+        if(string.IsNullOrEmpty((string?)message["title"])&&copy.TryGetProperty("title",out var title))message["title"]=title.GetString();
         message["format"]=copy.TryGetProperty("format",out var format)?JsonNode.Parse(format.GetRawText()):null;
         message["purged"]=false;
         using var document=JsonDocument.Parse(merged.ToJsonString());return document.RootElement.Clone();

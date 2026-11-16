@@ -214,6 +214,9 @@ public sealed partial class MessengerPage
     string DesktopTitle(MessengerApi source,JsonElement row)
     {
         if(row.GetProperty("title").GetString() is{Length:>0} title)return title;
+        // A title the server no longer keeps is read from this Mac's copy before falling back to the first words of the body.
+        try{if(desktopArchive?.Owner==source&&desktopArchive.Load(row.GetProperty("id").GetString()!) is{} kept&&kept.GetProperty("message").GetProperty("title").GetString() is{Length:>0} saved)return saved;}
+        catch(InvalidOperationException){}
         if(row.TryGetProperty("preview",out var preview)&&preview.GetString() is{Length:>0} text)return text;
         try{return desktopArchive?.Owner==source&&desktopArchive.Load(row.GetProperty("id").GetString()!) is{} copy?SchoolMessenger.Shared.MessageText.Excerpt(copy.GetProperty("message").GetProperty("body").GetString()):"";}
         catch(InvalidOperationException){return "";}

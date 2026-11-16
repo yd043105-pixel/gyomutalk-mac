@@ -79,7 +79,7 @@ public sealed partial class MessengerPage
         var dated=new CheckBox{IsChecked=due is not null,Color=Blue};dated.CheckedChanged+=(_,e)=>date.IsEnabled=e.Value;
         var dueLabel=Text("기한 지정",14);dueLabel.VerticalOptions=LayoutOptions.Center;dated.VerticalOptions=LayoutOptions.Center;date.VerticalOptions=LayoutOptions.Center;date.HorizontalOptions=LayoutOptions.Start;
         // One line, everything centred on it: the check, its words, then the date.
-        var dueRow=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star)},ColumnSpacing=8};dueRow.Add(dated);dueRow.Add(dueLabel,1);dueRow.Add(date,2);
+        var dueRow=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star)},ColumnSpacing=8};date.HeightRequest=32;dueRow.Add(dated);dueRow.Add(dueLabel,1);dueRow.Add(date,2);
         stack.Add(Text("기한 · 선택",12,true));stack.Add(DesktopPanel(dueRow,8));
         string[] statuses=["open","done","dismissed"];
         var picker=new Picker{ClassId="school-field",AutomationId="mac-todo-status",Title="상태",ItemsSource=statuses.Select(s=>TodoStatus(s)).ToArray(),SelectedIndex=Math.Max(0,Array.IndexOf(statuses,status)),IsEnabled=item is not null,TextColor=Navy};

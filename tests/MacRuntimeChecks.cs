@@ -217,6 +217,7 @@ internal static class MacRuntimeChecks
             Check(MessageArchive.Purged(dropped)&&dropped.GetProperty("message").GetProperty("body").GetString()=="","Server drops the body once this Mac confirmed its sealed copy");
             await Page.MacVerifyDetail(sentId);await Wait(()=>Page.MacVerifyReady);
             Check(Views(Page.MacVerifyReader!).OfType<Label>().Any(l=>l.Text=="가상 학교 데이터로 Mac 메시지 작성과 수신 연결을 검사합니다."),"Mac reader shows the body from its own copy after the server dropped it");
+            Check(Views(Page.MacVerifyReader!).OfType<Label>().Any(l=>l.Text=="Mac 네이티브 전송 검증"),"Mac reader shows the title from its own copy after the server dropped it");
             archive.Verify(archive.Merge(dropped));Check(true,"Mac message copy is sealed on disk, restores a dropped body and is not saved again after recall");
             // File collection and to-dos use invented staff on the isolated loopback server only.
             var office=fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost");var password=fixture.GetProperty("password").GetString()!;var admin=Page.MacVerifyApi;var staff=new List<string>();
