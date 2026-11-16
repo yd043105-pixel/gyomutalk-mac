@@ -28,15 +28,15 @@ public sealed partial class MessengerPage
         var dayButton=DesktopButton("하루");var weekButton=DesktopButton("한 주");
         var actions=new HorizontalStackLayout{Spacing=8,Children={dayButton,weekButton}};stack.Add(actions);
         TimetableDay[] printDays=[];string printTitle="";
-        var printButton=DesktopButton("게시 시간표 인쇄");printButton.IsEnabled=false;
+        var printButton=DesktopButton("보고 있는 시간표 인쇄");printButton.IsEnabled=false;
         var content=new VerticalStackLayout{Spacing=10};stack.Add(content);
         var scheduleTools=new FlexLayout{Wrap=Microsoft.Maui.Layouts.FlexWrap.Wrap};
         if(teacher)
         {
-            scheduleTools.Add(DesktopButton("수업 교체 신청",()=>MacSwapEditor(source,date.Date??DateTime.Today),true));
             var manager=setup.GetProperty("canManage").GetBoolean();
+            var swap=DesktopButton("수업 교체 신청",()=>MacSwapBoard(source,date.Date??DateTime.Today,manager),true);swap.AutomationId="mac-swap-board";scheduleTools.Add(swap);
             scheduleTools.Add(DesktopButton("교체 신청 현황",()=>MacSwapQueue(source,setup,manager)));
-            if(manager) scheduleTools.Add(DesktopButton("묶음수업 설정",()=>MacBundleEditor(source,date.Date??DateTime.Today)));
+            if(manager) scheduleTools.Add(DesktopButton("묶음수업",()=>MacBundleEditor(source)));
             scheduleTools.Add(printButton);
             foreach(var tool in scheduleTools.Children.OfType<View>())tool.Margin=new Thickness(0,0,8,6);
             stack.Add(scheduleTools);

@@ -26,22 +26,19 @@ public sealed partial class MessengerPage
         $"{change.Before.Subject} ({change.Before.TeacherName}) → {change.After.Subject} ({change.After.TeacherName})";
     static string MacSwapTitle(TimetableSwap swap) =>
         $"{swap.OwnerName} · {MacScheduleStatus(swap.Status)} · {MacSwapLine(swap.Changes[0])}";
-    static string MacSlotLabel(TimetablePlanSlot slot, HashSet<TimetablePosition> waiting) =>
-        $"{slot.Lesson.ClassName} {slot.Position.Period}교시 · {slot.Lesson.Subject} ({slot.Lesson.TeacherName})" +
-        (slot.Mine ? " · 내 수업" : "") + (slot.BundleName is null ? "" : " · 묶음 " + slot.BundleName) +
-        (waiting.Contains(slot.Position) ? " · 신청 있음" : "");
-
     (ContentPage Page, VerticalStackLayout Body, Action<string, Func<Task>> Add, Label Status) MacSchedulePage(MessengerApi source, string title)
     {
-        var body = new VerticalStackLayout { Padding = 18, Spacing = 10 };
-        var status = Text("", 13);
-        var page = new ContentPage { Title = title, BackgroundColor = BackgroundColor, Content = new ScrollView { Content = body } };
+        // The same frame as the other desktop pages: the window header, then the page with its title.
+        var body = new VerticalStackLayout { Padding = new Thickness(24, 16), Spacing = 10 };
+        var status = Text("", 13); status.TextColor = Muted;
+        var page = DesktopPage(title);
+        ((Grid)page.Content).Add(new ScrollView { Content = body }, 0, 1);
         body.Add(Text(title, 22, true));
         body.Add(status);
         bool busy = false;
         void Add(string label, Func<Task> action)
         {
-            var button = new Button { Text = label, HorizontalOptions = LayoutOptions.Start };
+            var button = DesktopButton(label); button.HorizontalOptions = LayoutOptions.Start;
             button.Clicked += async (_, _) =>
             {
                 if (busy || !MacScheduleActive(source)) return;
@@ -55,122 +52,6 @@ public sealed partial class MessengerPage
             body.Add(button);
         }
         return (page, body, Add, status);
-    }
-
-    async Task MacSwapEditor(MessengerApi source, DateTime selected)
-    {
-        var requests = (await source.Get("api/timetable/swaps")).Deserialize(MobileJson.Default.TimetableSwapArray)!;
-        if (!MacScheduleActive(source)) return;
-        var ui = MacSchedulePage(source, "수업 교체 신청");
-        var firstDate = new DatePicker { Date = selected, Format = "yyyy.MM.dd" };
-        var secondDate = new DatePicker { Date = selected, Format = "yyyy.MM.dd" };
-        ui.Body.Add(Text("출발 날짜와 교환할 날짜를 선택하세요. 묶음은 구성 수업을 모두 추가합니다.", 13));
-        var dates = new HorizontalStackLayout { Spacing = 12 };
-        dates.Add(firstDate);
-        dates.Add(secondDate);
-        ui.Body.Add(dates);
-
-        var pending = requests.Where(s => s.Status is "pending" or "review").ToArray();
-        var waiting = pending.SelectMany(s => s.Changes.Select(c => c.Position)).ToHashSet();
-        var dependencies = new Dictionary<string, CheckBox>();
-        ui.Body.Add(Text("대기 신청 · 체크하면 반영된다고 가정", 14, true));
-        foreach (var swap in pending)
-        {
-            var check = new CheckBox { IsEnabled = swap.Status == "pending" };
-            var row = new HorizontalStackLayout { Spacing = 5 };
-            row.Add(check);
-            row.Add(Text(MacSwapTitle(swap), 12));
-            ui.Body.Add(row);
-            if (swap.Status == "pending") dependencies.Add(swap.Id, check);
-        }
-
-        var first = new Picker { Title = "출발 수업" };
-        var second = new Picker { Title = "같은 학급의 교환 수업" };
-        var added = new VerticalStackLayout { Spacing = 4 };
-        var reason = new Entry { Placeholder = "신청 사유 (수업계와 본인에게 표시)", MaxLength = 500 };
-        var pairs = new List<TimetableExchange>();
-        TimetableSwapPlan? plan = null;
-        TimetablePlanSlot[] firstOptions = [], targetOptions = [], secondOptions = [];
-        string[] planDependencies = [];
-        string? requestId = null;
-        void Reset()
-        {
-            plan = null;
-            firstOptions = targetOptions = secondOptions = [];
-            first.ItemsSource = null;
-            second.ItemsSource = null;
-            pairs.Clear();
-            added.Children.Clear();
-            requestId = null;
-        }
-        firstDate.DateSelected += (_, _) => Reset();
-        secondDate.DateSelected += (_, _) => Reset();
-        foreach (var check in dependencies.Values) check.CheckedChanged += (_, _) => Reset();
-        reason.TextChanged += (_, _) => requestId = null;
-        ui.Add("선택한 날짜의 수업 불러오기", async () =>
-        {
-            Reset();
-            if (firstDate.Date is not { } from || secondDate.Date is not { } to)
-                throw new InvalidOperationException("두 날짜를 선택하세요.");
-            var start = MacScheduleDate(from);
-            var end = MacScheduleDate(to);
-            var chosen = dependencies.Where(p => p.Value.IsChecked).Select(p => p.Key).ToHashSet();
-            foreach (var id in chosen.ToArray()) AddPreceding(id);
-            void AddPreceding(string id)
-            {
-                foreach (var parent in requests.Single(r => r.Id == id).Dependencies)
-                    if (dependencies.ContainsKey(parent) && chosen.Add(parent)) AddPreceding(parent);
-            }
-            planDependencies = chosen.Order(StringComparer.Ordinal).ToArray();
-            plan = (await source.Send("api/timetable/swap-plan", new TimetableSwapPlanRequest([start, end], planDependencies)))
-                .Deserialize(MobileJson.Default.TimetableSwapPlan)!;
-            if (!MacScheduleActive(source)) return;
-            firstOptions = plan.Slots.Where(s => s.Position.Date == start).OrderByDescending(s => s.Mine).ToArray();
-            targetOptions = plan.Slots.Where(s => s.Position.Date == end).ToArray();
-            first.ItemsSource = firstOptions.Select(s => MacSlotLabel(s, waiting)).ToArray();
-            ui.Status.Text = planDependencies.Length == 0 ? "공식 시간표 기준입니다." : $"선행 신청 {planDependencies.Length}건의 반영을 가정합니다.";
-        });
-        first.SelectedIndexChanged += (_, _) =>
-        {
-            if (first.SelectedIndex < 0) { second.ItemsSource = null; return; }
-            var position = firstOptions[first.SelectedIndex].Position;
-            secondOptions = targetOptions.Where(s => s.Position.ClassId == position.ClassId && s.Position != position).ToArray();
-            second.ItemsSource = secondOptions.Select(s => MacSlotLabel(s, waiting)).ToArray();
-        };
-        ui.Body.Add(first);
-        ui.Body.Add(second);
-        ui.Add("교환 쌍 추가", () =>
-        {
-            if (plan is null || first.SelectedIndex < 0 || second.SelectedIndex < 0)
-                throw new InvalidOperationException("두 수업을 선택하세요.");
-            var a = firstOptions[first.SelectedIndex];
-            var b = secondOptions[second.SelectedIndex];
-            var used = pairs.SelectMany(p => new[] { p.First, p.Second }).ToHashSet();
-            if (pairs.Count >= 12 || used.Contains(a.Position) || used.Contains(b.Position))
-                throw new InvalidOperationException("수업은 한 번만 선택할 수 있고 교환 쌍은 최대 12개입니다.");
-            var pair = new TimetableExchange(a.Position, b.Position);
-            pairs.Add(pair);
-            requestId = null;
-            var row = new HorizontalStackLayout { Spacing = 8 };
-            row.Add(Text($"{a.Position.Date} {MacSlotLabel(a, waiting)} ↔ {b.Position.Date} {MacSlotLabel(b, waiting)}", 12));
-            var remove = new Button { Text = "빼기" };
-            remove.Clicked += (_, _) => { pairs.Remove(pair); added.Children.Remove(row); requestId = null; };
-            row.Add(remove);
-            added.Add(row);
-            return Task.CompletedTask;
-        });
-        ui.Body.Add(added);
-        ui.Body.Add(reason);
-        ui.Add("교체 신청 제출", async () =>
-        {
-            if (plan is null || pairs.Count == 0) throw new InvalidOperationException("교환할 수업을 추가하세요.");
-            requestId ??= MacScheduleId();
-            await source.Send("api/timetable/swaps", new TimetableSwapCreate(requestId, plan.Revision, pairs.ToArray(), planDependencies, reason.Text));
-            if (!MacScheduleActive(source)) return;
-            Reset();
-            ui.Status.Text = "교체 신청을 접수했습니다.";
-        });
-        await Navigation.PushAsync(ui.Page);
     }
 
     async Task MacSwapQueue(MessengerApi source, JsonElement setup, bool manager)
@@ -296,66 +177,6 @@ public sealed partial class MessengerPage
             await reload();
             await Navigation.PopAsync();
         });
-        if (MacScheduleActive(source)) await Navigation.PushAsync(ui.Page);
-    }
-
-    async Task MacBundleEditor(MessengerApi source, DateTime selected)
-    {
-        var ui = MacSchedulePage(source, "묶음수업 설정");
-        var day = new DatePicker { Date = selected, Format = "yyyy.MM.dd" };
-        var name = new Entry { Placeholder = "묶음 이름", MaxLength = 60 };
-        var kind = new Picker { ItemsSource = new[] { "연강", "동시 수업" }, SelectedIndex = 0 };
-        var choices = new VerticalStackLayout { Spacing = 4 };
-        var existing = new VerticalStackLayout { Spacing = 4 };
-        var picked = new Dictionary<TimetablePosition, CheckBox>();
-        async Task LoadBundles()
-        {
-            var bundles = (await source.Get("api/timetable/bundles")).Deserialize(MobileJson.Default.TimetableBundleArray)!;
-            if (!MacScheduleActive(source)) return;
-            existing.Children.Clear();
-            foreach (var bundle in bundles.OrderBy(b => b.Slots[0].Date))
-                existing.Add(DesktopButton($"{bundle.Slots[0].Date} · {bundle.Name} 삭제", async () =>
-                {
-                    if (!await DisplayAlertAsync("묶음수업", $"‘{bundle.Name}’ 묶음을 삭제할까요?", "삭제", "닫기") || !MacScheduleActive(source)) return;
-                    await source.Send("api/timetable/bundles/" + bundle.Id, method: HttpMethod.Delete);
-                    await LoadBundles();
-                }));
-        }
-        ui.Body.Add(day);
-        ui.Body.Add(name);
-        ui.Body.Add(kind);
-        ui.Body.Add(existing);
-        day.DateSelected += (_, _) => { choices.Children.Clear(); picked.Clear(); };
-        ui.Add("날짜의 수업 불러오기", async () =>
-        {
-            if (day.Date is not { } date) throw new InvalidOperationException("날짜를 선택하세요.");
-            var plan = (await source.Send("api/timetable/swap-plan", new TimetableSwapPlanRequest([MacScheduleDate(date)], [])))
-                .Deserialize(MobileJson.Default.TimetableSwapPlan)!;
-            if (!MacScheduleActive(source)) return;
-            choices.Children.Clear();
-            picked.Clear();
-            foreach (var slot in plan.Slots)
-            {
-                var row = new HorizontalStackLayout { Spacing = 5 };
-                var check = new CheckBox { IsEnabled = slot.BundleName is null };
-                picked.Add(slot.Position, check);
-                row.Add(check);
-                row.Add(Text(MacSlotLabel(slot, []), 12));
-                choices.Add(row);
-            }
-        });
-        ui.Add("선택 수업을 묶음으로 저장", async () =>
-        {
-            var slots = picked.Where(p => p.Value.IsChecked).Select(p => p.Key).ToArray();
-            await source.Send("api/timetable/bundles", new TimetableBundle(MacScheduleId(), name.Text ?? "",
-                kind.SelectedIndex == 0 ? "consecutive" : "simultaneous", slots));
-            if (!MacScheduleActive(source)) return;
-            choices.Children.Clear();
-            picked.Clear();
-            await LoadBundles();
-        });
-        ui.Body.Add(choices);
-        await LoadBundles();
         if (MacScheduleActive(source)) await Navigation.PushAsync(ui.Page);
     }
 

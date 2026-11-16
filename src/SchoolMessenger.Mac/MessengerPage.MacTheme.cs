@@ -8,7 +8,8 @@ namespace SchoolMessenger.Mobile;
 public sealed partial class MessengerPage
 {
     static readonly Color Canvas=Color.FromArgb("#F4F7FB"),Surface=Colors.White,Faint=Color.FromArgb("#8794A6"),Subtle=Color.FromArgb("#F7F9FC"),
-        Danger=Color.FromArgb("#DC2626"),Success=Color.FromArgb("#16A34A"),Warning=Color.FromArgb("#B45309"),ChangeTint=Color.FromArgb("#FFF3B0"),ChangeInk=Color.FromArgb("#6B5200");
+        Danger=Color.FromArgb("#DC2626"),Success=Color.FromArgb("#16A34A"),Warning=Color.FromArgb("#B45309"),ChangeTint=Color.FromArgb("#FFF3B0"),ChangeInk=Color.FromArgb("#6B5200"),
+        SuccessTint=Color.FromArgb("#E3F5EA"),SuccessLine=Color.FromArgb("#A6DDB8"),DangerTint=Color.FromArgb("#FDECEC"),DangerLine=Color.FromArgb("#F1B8B2");
     const double Radius=10,RailWidth=90;
     static readonly (Color Back,Color Ink)[] AvatarTints=
     [

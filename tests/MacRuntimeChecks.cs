@@ -26,6 +26,8 @@ public sealed partial class MessengerPage
     internal MessengerApi MacVerifyApi=>api!;
     internal bool MacVerifyConnected=>desktopHub?.State==Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
     internal Task<bool> MacVerifyTimetable()=>Timetable();
+    internal Task MacVerifySwapBoard()=>MacSwapBoard(api!,DateTime.UtcNow.AddHours(9).Date,true);
+    internal Task MacVerifyBundles()=>MacBundleEditor(api!);
     internal Task MacVerifyCompose()=>MacCompose();
     internal Task MacVerifyPeople()=>MacPeople();
     internal Task MacVerifyDetail(string id)=>OfficeDetail(id);
@@ -164,9 +166,26 @@ internal static class MacRuntimeChecks
             var timetable=Views(Page.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-nav-timetable");
             Check(timetable.IsVisible&&await Page.MacVerifyTimetable(),"The enabled timetable opens from the desktop workspace");
             var timetablePage=(ContentPage)Page.Navigation.NavigationStack.Last();
-            Check(Views(timetablePage.Content).OfType<Button>().Any(button=>button.Text=="한 주")&&
-                Views(timetablePage.Content).OfType<Label>().Any(label=>label.Text=="아직 올라온 시간표가 없습니다"),
-                "Mac timetable shows a dedicated empty state and the weekly view control");
+            await Wait(()=>Views(timetablePage.Content).OfType<Label>().Any(label=>label.Text=="국어"));
+            Check(Views(timetablePage.Content).OfType<Button>().Any(button=>button.Text=="한 주")&&Views(timetablePage.Content).OfType<Button>().Any(button=>button.Text=="보고 있는 시간표 인쇄"),
+                "Mac timetable shows the published week with the weekly view control and the print button");
+            await Capture("mac-timetable.png");
+            await Page.MacVerifySwapBoard();
+            var boardPage=(ContentPage)Page.Navigation.NavigationStack.Last();
+            await Wait(()=>Views(boardPage.Content).OfType<Label>().Count(label=>label.AutomationId=="mac-board-cell")>200);
+            var palette=new[]{"#9DEDF1","#EAB6ED","#F4AFB6"}.Select(Color.FromArgb).ToArray();
+            var cells=Views(boardPage.Content).OfType<Label>().Where(label=>label.AutomationId=="mac-board-cell").ToArray();
+            Check(palette.All(color=>cells.Any(cell=>cell.Text.EndsWith("◆",StringComparison.Ordinal)&&cell.BackgroundColor.ToArgbHex()==color.ToArgbHex())),
+                "Mac swap board shows every teacher's week and paints each of the three bundles in its own colour, in the order of their names");
+            Check(Views(boardPage.Content).OfType<Button>().Any(button=>button.AutomationId=="mac-board-submit"&&!button.IsEnabled),"The request button waits until a lesson has been moved");
+            await Capture("mac-swap-board.png");
+            await Page.Navigation.PopAsync();
+            await Page.MacVerifyBundles();
+            var bundlePage=(ContentPage)Page.Navigation.NavigationStack.Last();
+            await Wait(()=>Views(bundlePage.Content).OfType<Label>().Any(label=>label.Text=="1학년 선택 A"));
+            Check(Views(bundlePage.Content).OfType<Picker>().Any(picker=>picker.AutomationId=="mac-bundle-grade"&&picker.SelectedIndex==0),"Mac bundle page lists the bundles with their colours and picks grade, subject and classes");
+            await Capture("mac-bundles.png");
+            await Page.Navigation.PopAsync();
             await Page.MacVerifyApi.Send("api/admin/timetable-feature",content:Json(new JsonObject{["enabled"]=false}));
             await Wait(()=>!timetable.IsVisible&&Page.Navigation.NavigationStack.Count==1);
             Check(!timetable.IsVisible,"Disabling the timetable hides its sidebar item and closes the active timetable view");
@@ -221,6 +240,7 @@ internal static class MacRuntimeChecks
             await admin.Send("api/submission-requests/"+requestId+"/targets/"+staff[1],content:Json(new JsonObject{["exempt"]=true}),method:HttpMethod.Patch);
             await Page.MacVerifyWork("submission-requests",requestId);
             Check(Page.MacVerifySubmissionTargets!.Children.OfType<Border>().Count(c=>c.ClassId=="면제")==1,"Exemption saved with PATCH is reflected in the recipient card state");
+            Check(Page.MacVerifySubmissionTargets!.Children.OfType<Border>().All(c=>c.ClassId=="면제"||c.BackgroundColor.ToArgbHex()==Color.FromArgb(c.ClassId=="미제출"?"#FDECEC":"#E3F5EA").ToArgbHex()),"Handed-in cards are green and missing ones red");
             var due=DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).DateTime).AddDays(3);
             var todoId=(await admin.Send("api/todos",content:Json(new JsonObject{["title"]="Mac 할 일 검증",["dueDate"]=due.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture),["status"]="open",["revision"]=0}))).GetProperty("id").GetString()!;
             await Page.MacVerifyWork("todos",todoId);var work=Views(Page.MacVerifyContent!).ToArray();

@@ -77,8 +77,10 @@ public sealed partial class MessengerPage
         DateOnly? due=item is{} d&&DateOnly.TryParseExact(Field(d,"dueDate"),"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out var parsed)?parsed:null;
         var date=new DatePicker{ClassId="school-field",Format="yyyy.MM.dd",Date=(due??KoreanToday.AddDays(7)).ToDateTime(TimeOnly.MinValue),IsEnabled=due is not null};
         var dated=new CheckBox{IsChecked=due is not null,Color=Blue};dated.CheckedChanged+=(_,e)=>date.IsEnabled=e.Value;
-        var dueLabel=Text("기한 지정",14);dueLabel.VerticalOptions=LayoutOptions.Center;
-        stack.Add(Text("기한 · 선택",12,true));stack.Add(DesktopPanel(new HorizontalStackLayout{Spacing=8,Children={dated,dueLabel,date}},8));
+        var dueLabel=Text("기한 지정",14);dueLabel.VerticalOptions=LayoutOptions.Center;dated.VerticalOptions=LayoutOptions.Center;date.VerticalOptions=LayoutOptions.Center;date.HorizontalOptions=LayoutOptions.Start;
+        // One line, everything centred on it: the check, its words, then the date.
+        var dueRow=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Auto),new(GridLength.Star)},ColumnSpacing=8};dueRow.Add(dated);dueRow.Add(dueLabel,1);dueRow.Add(date,2);
+        stack.Add(Text("기한 · 선택",12,true));stack.Add(DesktopPanel(dueRow,8));
         string[] statuses=["open","done","dismissed"];
         var picker=new Picker{ClassId="school-field",AutomationId="mac-todo-status",Title="상태",ItemsSource=statuses.Select(s=>TodoStatus(s)).ToArray(),SelectedIndex=Math.Max(0,Array.IndexOf(statuses,status)),IsEnabled=item is not null,TextColor=Navy};
         stack.Add(Text("상태",12,true));stack.Add(DesktopPanel(picker,8));
@@ -120,21 +122,22 @@ public sealed partial class MessengerPage
             for(var c=0;c<count;c++)grid.ColumnDefinitions.Add(new(GridLength.Star));for(var r=0;r<(cards.Length+count-1)/count;r++)grid.RowDefinitions.Add(new(GridLength.Auto));
             for(var i=0;i<cards.Length;i++){Grid.SetColumn(cards[i],i%count);Grid.SetRow(cards[i],i/count);}
         }
-        grid.SizeChanged+=(_,_)=>{if(grid.Width>0)Arrange(mine?Math.Clamp((int)((grid.Width+8)/140),1,4):1);};
+        grid.SizeChanged+=(_,_)=>{if(grid.Width>0)Arrange(mine?Math.Clamp((int)((grid.Width+8)/170),1,4):1);};
         foreach(var target in targets)
         {
             var exempt=target.GetProperty("exempt").GetBoolean();var done=target.GetProperty("submittedAt").ValueKind!=JsonValueKind.Null;var name=Field(target,"name")??"";
             var state=exempt?"면제":done?target.GetProperty("late").GetBoolean()?"지각 제출":"제출 완료":"미제출";
             var content=new VerticalStackLayout{Spacing=4};var header=new Grid{ColumnDefinitions={new(new GridLength(12)),new(GridLength.Star),new(GridLength.Auto)}};
-            header.Add(new Ellipse{WidthRequest=7,HeightRequest=7,Fill=new SolidColorBrush(exempt?Faint:done?Success:Line),VerticalOptions=LayoutOptions.Center,HorizontalOptions=LayoutOptions.Start});
+            header.Add(new Ellipse{WidthRequest=7,HeightRequest=7,Fill=new SolidColorBrush(exempt?Faint:done?Success:Danger),VerticalOptions=LayoutOptions.Center,HorizontalOptions=LayoutOptions.Start});
             var label=Text(name,13,true);label.MaxLines=1;label.LineBreakMode=LineBreakMode.TailTruncation;label.VerticalOptions=LayoutOptions.Center;header.Add(label,1);content.Add(header);
+            var said=Text(state,11,true);said.TextColor=exempt?Muted:done?Success:Danger;said.Margin=new Thickness(12,0,0,0);said.AutomationId="mac-submission-state";content.Add(said);
             foreach(var file in target.GetProperty("files").EnumerateArray())
             {
                 var fileId=Field(file,"id")!;var fileName=Field(file,"name")??"";var expired=file.GetProperty("expired").GetBoolean();var description=fileName+" · "+FileSize(file.GetProperty("size").GetInt64())+(expired?" · 파일 만료":"");
                 var entry=DesktopButton(fileName+(expired?" (만료)":""),()=>source.ShareFile(fileId,fileName));entry.AutomationId="mac-submission-file";entry.FontSize=11;entry.MinimumHeightRequest=26;entry.Padding=new Thickness(6,3);entry.HorizontalOptions=LayoutOptions.Fill;entry.IsEnabled=!expired;
                 ToolTipProperties.SetText(entry,description);SemanticProperties.SetDescription(entry,description);content.Add(entry);
             }
-            var card=DesktopPanel(content,8,Subtle);card.MinimumHeightRequest=48;card.AutomationId="mac-submission-target";card.ClassId=state;
+            var card=DesktopPanel(content,8,exempt?Subtle:done?SuccessTint:DangerTint);card.Stroke=exempt?Line:done?SuccessLine:DangerLine;card.MinimumHeightRequest=48;card.AutomationId="mac-submission-target";card.ClassId=state;
             ToolTipProperties.SetText(card,name+" · "+state);SemanticProperties.SetDescription(card,name+" · "+state);
             if(mine&&!closed)
             {
