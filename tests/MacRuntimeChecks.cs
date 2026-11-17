@@ -194,6 +194,8 @@ internal static class MacRuntimeChecks
             Check(timetable.IsVisible,"Re-enabling the timetable restores its sidebar item without signing in again");
             var people=await Page.MacVerifyApi.Get("api/users");var self=people.EnumerateArray().Single(p=>p.GetProperty("id").GetString()==Page.MacVerifyApi.Session.GetProperty("user").GetProperty("id").GetString());
             Check(self.GetProperty("online").GetBoolean()&&!self.GetProperty("mobile").GetBoolean(),"Server reports Mac as desktop online, without a phone lease");
+            // The workspace is drawn again after the timetable comes back; wait for it as the other checks do.
+            await Wait(()=>Page.MacVerifyReader?.Content is Grid&&Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId=="mac-filter-unread"));
             Check(Page.MacVerifyReader?.Content is Grid&&Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId=="mac-filter-unread"),"Desktop message list and reader remain side by side with a native unread filter");
             Check(!Views(Page.Content).OfType<Microsoft.Maui.Controls.Shapes.Ellipse>().Any(dot=>dot.AutomationId=="mac-unread-dot"&&dot.IsVisible),"Opening the selected message clears its unread dot after the server read acknowledgement");
             Check(!Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId?.StartsWith("school-tab-")==true),"Mac uses desktop navigation without duplicate mobile bottom tabs");await Capture("mac-messages.png");
