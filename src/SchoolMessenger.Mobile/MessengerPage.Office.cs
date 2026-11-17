@@ -36,7 +36,24 @@ public sealed partial class MessengerPage
         },true);
         Action("로그아웃",async()=>{try{await source.Logout();}finally{source.Dispose();api=null;Login();}});
     }
+    // An all-day event's days, "11/20" or "11/20 → 11/22".
+    static string OfficeDay(JsonElement row){var from=DateTimeOffset.FromUnixTimeMilliseconds(row.GetProperty("start").GetInt64()).ToOffset(TimeSpan.FromHours(9)).Date;var to=DateTimeOffset.FromUnixTimeMilliseconds(row.GetProperty("end").GetInt64()).ToOffset(TimeSpan.FromHours(9)).Date.AddDays(-1);return from.ToString("M/d",CultureInfo.InvariantCulture)+(to>from?" → "+to.ToString("M/d",CultureInfo.InvariantCulture):"");}
     static string OfficeDate(JsonElement row,string field)=>DateTimeOffset.FromUnixTimeMilliseconds(row.GetProperty(field).GetInt64()).ToOffset(TimeSpan.FromHours(9)).ToString("M/d HH:mm");
+    // An event's lessons (servers before 0.1.6 send none) and whether it covers a day; an all-day event is stored up to the midnight after its last day.
+    static int[] EventPeriods(JsonElement row)=>row.TryGetProperty("periods",out var p)&&p.ValueKind==JsonValueKind.Array?p.EnumerateArray().Select(x=>x.GetInt32()).ToArray():[];
+    static bool EventCovers(JsonElement row,DateTime date)
+    {
+        var from=DateTimeOffset.FromUnixTimeMilliseconds(row.GetProperty("start").GetInt64()).ToOffset(TimeSpan.FromHours(9)).DateTime;var end=DateTimeOffset.FromUnixTimeMilliseconds(row.GetProperty("end").GetInt64()).ToOffset(TimeSpan.FromHours(9)).DateTime;
+        var to=(end.TimeOfDay==TimeSpan.Zero&&end.Date>from.Date?end.AddDays(-1):end).Date;return date.Date>=from.Date&&date.Date<=to;
+    }
+    // An event in the lessons it takes, in the event's own colour as on Windows.
+    static Border EventTag(JsonElement row,bool lessons)
+    {
+        var title=row.GetProperty("title").GetString()??"";var tint=AvatarTints[AvatarSlot(title)];
+        var text=new Label{Text=(lessons?SchoolDay.PeriodText(EventPeriods(row)):"행사")+" "+title,FontSize=11,FontAttributes=FontAttributes.Bold,TextColor=tint.Ink,MaxLines=1,LineBreakMode=LineBreakMode.TailTruncation};
+        var tag=new Border{Content=text,Padding=new Thickness(6,2),BackgroundColor=tint.Back,StrokeThickness=0,StrokeShape=new Microsoft.Maui.Controls.Shapes.RoundRectangle{CornerRadius=6}};
+        ToolTipProperties.SetText(tag,title+" · "+SchoolDay.PeriodText(EventPeriods(row))+" · "+row.GetProperty("ownerName").GetString()+" 등록");SemanticProperties.SetDescription(tag,title+" "+SchoolDay.PeriodText(EventPeriods(row)));return tag;
+    }
     static string OfficeTimestamp(DateTime date,TimeSpan time)=>new DateTimeOffset(DateTime.SpecifyKind(date.Date,DateTimeKind.Unspecified).Add(time),TimeSpan.FromHours(9)).ToString("yyyy-MM-dd'T'HH:mm:sszzz",CultureInfo.InvariantCulture);
     async Task OfficeSchedule(bool reservations)
     {
@@ -60,9 +77,10 @@ public sealed partial class MessengerPage
                 foreach(var row in rows.EnumerateArray())
                 {
                     var details=new VerticalStackLayout{Spacing=5};details.Add(Text(row.GetProperty("title").GetString()!,17,true));
-                    details.Add(Text(OfficeDate(row,"start")+" → "+OfficeDate(row,"end")+" · "+row.GetProperty("ownerName").GetString(),12));
+                    details.Add(Text((!reservations&&row.GetProperty("allDay").GetBoolean()?OfficeDay(row):OfficeDate(row,"start")+" → "+OfficeDate(row,"end"))+" · "+row.GetProperty("ownerName").GetString()+(reservations?"":" 등록"),12));
+                    if(!reservations&&EventPeriods(row).Length>0){var lessons=Text(SchoolDay.PeriodText(EventPeriods(row))+" · 시간표에 표시",13,true);lessons.TextColor=Blue;details.Add(lessons);}
                     if(reservations)details.Add(Text(row.GetProperty("roomName").GetString()!,13));else details.Add(Text(row.GetProperty("description").GetString()!,14));
-                    var canEdit=reservations?row.GetProperty("ownerId").GetString()==setup.GetProperty("userId").GetString()||setup.GetProperty("roomManager").GetBoolean():setup.GetProperty("calendarManager").GetBoolean();
+                    var canEdit=reservations?row.GetProperty("ownerId").GetString()==setup.GetProperty("userId").GetString()||setup.GetProperty("roomManager").GetBoolean():setup.GetProperty("calendarManager").GetBoolean()||row.GetProperty("ownerId").GetString()==setup.GetProperty("userId").GetString();
                     if(canEdit)
                     {
                         var actions=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Star)},ColumnSpacing=8};
@@ -77,7 +95,7 @@ public sealed partial class MessengerPage
         }
         var tools=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Star)},ColumnSpacing=10};
         tools.Add(MakeAction(reservations?"날짜 조회":"선택한 달 조회",Load));
-        if(reservations||setup.GetProperty("calendarManager").GetBoolean())tools.Add(MakeAction(reservations?"특별실 예약하기":"학교 일정 등록",()=>OfficeEditor(source,setup,reservations,null,Load),true),1);stack.Add(tools);
+        tools.Add(MakeAction(reservations?"특별실 예약하기":"학교 일정 등록",()=>OfficeEditor(source,setup,reservations,null,Load),true),1);stack.Add(tools);
         if(reservations&&setup.GetProperty("roomManager").GetBoolean())stack.Add(MakeAction("특별실 등록",async()=>
         {
             var name=await page.DisplayPromptAsync("특별실 등록","특별실 이름을 입력하세요.");if(string.IsNullOrWhiteSpace(name))return;
@@ -96,13 +114,24 @@ public sealed partial class MessengerPage
         stack.Add(Text(booking?"예약할 공간과 시간":"학교 일정 작성",24,true));
         var title=new Entry{ClassId="school-field",Placeholder="제목",Text=existing?.GetProperty("title").GetString()};stack.Add(Text("제목",12,true));stack.Add(Card(title,10));
         var description=new Editor{Placeholder="행사·일정 안내",AutoSize=EditorAutoSizeOption.TextChanges,Text=!booking&&existing is{} ev?ev.GetProperty("description").GetString():""};if(!booking){stack.Add(Text("안내 내용",12,true));stack.Add(Card(description,10));}
-        var first=new DatePicker{ClassId="school-field",Date=start.Date,Format="yyyy.MM.dd"};var last=new DatePicker{ClassId="school-field",Date=end.Date,Format="yyyy.MM.dd"};var firstTime=new TimePicker{ClassId="school-field",Time=start.TimeOfDay,Format="HH:mm"};var lastTime=new TimePicker{ClassId="school-field",Time=end.TimeOfDay,Format="HH:mm"};
+        var whole=!booking&&existing is{} wholeDay&&wholeDay.GetProperty("allDay").GetBoolean();
+        var first=new DatePicker{ClassId="school-field",Date=start.Date,Format="yyyy.MM.dd"};var last=new DatePicker{ClassId="school-field",Date=whole?end.Date.AddDays(-1):end.Date,Format="yyyy.MM.dd"};var firstTime=new TimePicker{ClassId="school-field",Time=start.TimeOfDay,Format="HH:mm"};var lastTime=new TimePicker{ClassId="school-field",Time=end.TimeOfDay,Format="HH:mm"};
         View TimeFields(string label,DatePicker day,TimePicker time)
         {
             var fields=new VerticalStackLayout{Spacing=6};fields.Add(Text(label,12,true));var row=new Grid{ColumnDefinitions={new(new GridLength(1.5,GridUnitType.Star)),new(GridLength.Star)},ColumnSpacing=8};row.Add(day);row.Add(time,1);fields.Add(row);return Card(fields);
         }
         stack.Add(TimeFields("시작 · 한국 시간",first,firstTime));stack.Add(TimeFields("종료 · 한국 시간",last,lastTime));
-        var allDay=new CheckBox{IsChecked=!booking&&existing is{} day&&day.GetProperty("allDay").GetBoolean()};if(!booking){stack.Add(new HorizontalStackLayout{Children={allDay,Text("종일 · 종료 날짜는 마지막 날의 다음 날",12)}});firstTime.IsEnabled=lastTime.IsEnabled=!allDay.IsChecked;allDay.CheckedChanged+=(_,e)=>firstTime.IsEnabled=lastTime.IsEnabled=!e.Value;}
+        var allDay=new CheckBox{IsChecked=whole};
+        // Lessons the event takes on each of its days; every teacher sees them on the timetable.
+        var saved=!booking&&existing is{} withLessons?EventPeriods(withLessons):[];var picks=Enumerable.Range(1,7).Select(p=>new CheckBox{IsChecked=saved.Contains(p)}).ToArray();
+        if(!booking)
+        {
+            stack.Add(new HorizontalStackLayout{Children={allDay,Text("하루 종일 · 시각 없이 날짜만",12)}});firstTime.IsEnabled=lastTime.IsEnabled=!allDay.IsChecked;
+            allDay.CheckedChanged+=(_,e)=>{firstTime.IsEnabled=lastTime.IsEnabled=!e.Value;if(!e.Value)foreach(var pick in picks)pick.IsChecked=false;};
+            var lessons=new FlexLayout{Wrap=Microsoft.Maui.Layouts.FlexWrap.Wrap};
+            for(var p=0;p<picks.Length;p++){var pick=picks[p];SemanticProperties.SetDescription(pick,(p+1)+"교시");pick.CheckedChanged+=(_,e)=>{if(e.Value)allDay.IsChecked=true;};lessons.Add(new HorizontalStackLayout{Margin=new Thickness(0,0,10,0),Children={pick,Text((p+1)+"교시",13)}});}
+            var box=new VerticalStackLayout{Spacing=6};box.Add(Text("교시 (선택)",12,true));box.Add(lessons);var note=Text("교시를 고르면 날짜만 쓰는 일정이 되고, 모든 선생님의 시간표 그 교시에 행사 이름이 보입니다.",12);note.TextColor=Muted;box.Add(note);stack.Add(Card(box));
+        }
         var rooms=setup.GetProperty("rooms").EnumerateArray().Where(r=>r.GetProperty("active").GetBoolean()).ToArray();var room=new Picker{ClassId="school-field",Title="특별실",ItemsSource=rooms.Select(r=>r.GetProperty("name").GetString()!).ToArray(),SelectedIndex=booking&&existing is{} old?Array.FindIndex(rooms,r=>r.GetProperty("id").GetString()==old.GetProperty("roomId").GetString()):rooms.Length>0?0:-1};if(booking){stack.Add(Text("특별실",12,true));stack.Add(Card(room,10));}
         var error=Text("",13);error.TextColor=Color.FromArgb("#A53A38");stack.Add(error);var client=existing is{} previous&&previous.TryGetProperty("clientId",out var oldClient)?oldClient.GetString()!:Guid.NewGuid().ToString("N");
         object? pending=null;var save=new Button{Text="저장",BackgroundColor=Blue,TextColor=Colors.White};
@@ -112,9 +141,9 @@ public sealed partial class MessengerPage
             {
                 if(pending is null)
                 {
-                    var a=OfficeTimestamp(first.Date??start.Date,!booking&&allDay.IsChecked?TimeSpan.Zero:firstTime.Time??start.TimeOfDay);var b=OfficeTimestamp(last.Date??end.Date,!booking&&allDay.IsChecked?TimeSpan.Zero:lastTime.Time??end.TimeOfDay);var revision=existing?.GetProperty("revision").GetInt32()??0;
+                    var a=OfficeTimestamp(first.Date??start.Date,!booking&&allDay.IsChecked?TimeSpan.Zero:firstTime.Time??start.TimeOfDay);var b=!booking&&allDay.IsChecked?OfficeTimestamp((last.Date??end.Date).AddDays(1),TimeSpan.Zero):OfficeTimestamp(last.Date??end.Date,lastTime.Time??end.TimeOfDay);var revision=existing?.GetProperty("revision").GetInt32()??0;
                     if(booking&&room.SelectedIndex<0)throw new InvalidOperationException("관리자가 특별실을 먼저 등록해야 합니다.");
-                    pending=booking?new OfficeBookingRequest(client,rooms[room.SelectedIndex].GetProperty("id").GetString()!,title.Text??"",a,b,revision):new OfficeEventRequest(client,title.Text??"",description.Text??"",a,b,allDay.IsChecked,revision);
+                    pending=booking?new OfficeBookingRequest(client,rooms[room.SelectedIndex].GetProperty("id").GetString()!,title.Text??"",a,b,revision):new OfficeEventRequest(client,title.Text??"",description.Text??"",a,b,allDay.IsChecked,revision,picks.Select((pick,i)=>(pick,i)).Where(x=>x.pick.IsChecked).Select(x=>x.i+1).ToArray());
                 }
                 await source.Send("api/office/"+(booking?"bookings":"events")+(existing is{} row?"/"+row.GetProperty("id").GetString():""),pending);await Navigation.PopAsync();await refresh();
             }

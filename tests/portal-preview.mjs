@@ -28,6 +28,9 @@ const officeManager=await new Client(office).login('admin');
 const fixtureRoom=await officeManager.req('office/rooms','POST',{name:'가상 특별실',location:'검증용 2층'});
 const fixtureNow=new Date(),eventStart=new Date(fixtureNow.getTime()-3600000).toISOString(),eventEnd=new Date(fixtureNow.getTime()+3600000).toISOString();
 await officeManager.req('office/events','POST',{clientId:randomUUID().replaceAll('-',''),title:'교직원 학사일정 검증',description:'네이티브 앱 조회를 위한 가상 일정입니다.',start:eventStart,end:eventEnd,allDay:false});
+// An event that takes lessons today: it shows in those lessons of the timetable.
+const lessonDay=n=>new Date(Date.now()+9*3600000+n*86400000).toISOString().slice(0,10)+'T00:00:00+09:00';
+await officeManager.req('office/events','POST',{clientId:randomUUID().replaceAll('-',''),title:'교시 행사 검증',description:'',start:lessonDay(0),end:lessonDay(1),allDay:true,periods:[1,2]});
 const fixtureBookingDay=new Date(Date.now()+9*3600000+86400000).toISOString().slice(0,10);
 await officeManager.req('office/bookings','POST',{clientId:randomUUID().replaceAll('-',''),roomId:fixtureRoom.id,title:'교직원 특별실 예약 검증',start:fixtureBookingDay+'T09:00:00+09:00',end:fixtureBookingDay+'T09:50:00+09:00',grade:1});
 fixtureAccess.officeBookingDate=fixtureBookingDay;

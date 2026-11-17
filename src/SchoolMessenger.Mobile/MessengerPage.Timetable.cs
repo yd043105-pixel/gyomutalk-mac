@@ -50,6 +50,7 @@ public sealed partial class MessengerPage
         }
         printButton.Clicked+=(_,_)=>PrintMacSchedule(printTitle,printDays,error);
         bool loading=false,loaded=false,current=selectedDate is null;
+        JsonElement[] events=[];
         void WeekGrid(TimetableDay[] week,bool mine)
         {
             var shown=week.Where(day=>DateOnly.TryParse(day.Date,out var value)&&
@@ -82,7 +83,8 @@ public sealed partial class MessengerPage
                 for(var c=0;c<shown.Length;c++)
                 {
                     var lessons=shown[c].Slots.Where(slot=>slot.Period==periods[r]&&slot.Subject.Length>0).ToArray();
-                    var words=new VerticalStackLayout{Spacing=3};
+                    var words=new VerticalStackLayout{Spacing=3};var on=DateTime.ParseExact(shown[c].Date,"yyyy-MM-dd",CultureInfo.InvariantCulture);
+                    foreach(var e in events.Where(e=>EventCovers(e,on)&&EventPeriods(e).Contains(periods[r])))words.Add(EventTag(e,false));
                     foreach(var lesson in lessons)
                     {
                         var chip=new VerticalStackLayout{Spacing=0};
@@ -95,7 +97,7 @@ public sealed partial class MessengerPage
                         }
                         words.Add(new Border{Content=chip,Padding=new Thickness(7,3),BackgroundColor=lesson.Changed?ChangeTint:Pale,StrokeThickness=0,StrokeShape=new Microsoft.Maui.Controls.Shapes.RoundRectangle{CornerRadius=6}});
                     }
-                    if(lessons.Length==0)words.HeightRequest=34;
+                    if(words.Children.Count==0)words.HeightRequest=34;
                     Put(c+1,r+1,words,shown[c].Date==todayKey?Subtle:Surface,3);
                 }
             }
@@ -115,6 +117,10 @@ public sealed partial class MessengerPage
                     var rev=value.GetProperty("revision").GetInt64();if(revision is not null&&revision!=rev)throw new InvalidOperationException("조회 중 시간표가 변경되었습니다. 다시 조회하세요.");revision=rev;days.Add(value);
                 }
                 printDays=days.Select(d=>d.Deserialize(MobileJson.Default.TimetableDay)!).ToArray();
+                // School events that take lessons, shown in those lessons. The timetable works without them.
+                try{events=(await source.Get("api/office/events?from="+first.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture)+"&to="+first.AddDays(weekly?7:1).ToString("yyyy-MM-dd",CultureInfo.InvariantCulture))).EnumerateArray().Where(e=>EventPeriods(e).Length>0).ToArray();}
+                catch(Exception e)when(e is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException){events=[];}
+                if(!MacScheduleActive(source))return;
                 current=weekly;dayButton.BackgroundColor=weekly?Colors.Transparent:Colors.White;weekButton.BackgroundColor=weekly?Colors.White:Colors.Transparent;
                 dayButton.FontAttributes=weekly?FontAttributes.None:FontAttributes.Bold;weekButton.FontAttributes=weekly?FontAttributes.Bold:FontAttributes.None;
                 range.Text=weekly?first.ToString("M.d",CultureInfo.InvariantCulture)+" ~ "+first.AddDays(4).ToString("M.d",CultureInfo.InvariantCulture):selected.ToString("M월 d일 dddd",CultureInfo.GetCultureInfo("ko-KR"));
@@ -132,6 +138,7 @@ public sealed partial class MessengerPage
                 else foreach(var value in days)
                 {
                     content.Add(Text(value.GetProperty("date").GetString()!,16,true));
+                    foreach(var e in events.Where(e=>EventCovers(e,first))){var tag=EventTag(e,true);tag.Padding=new Thickness(10,6);content.Add(tag);}
                     if(!mine)
                     {
                         var roomInfo=rooms.FirstOrDefault(r=>r.GetProperty("id").GetString()==room);var grade=roomInfo.ValueKind==JsonValueKind.Object?roomInfo.GetProperty("grade").GetInt32():0;
