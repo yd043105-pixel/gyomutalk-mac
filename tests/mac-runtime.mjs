@@ -55,6 +55,11 @@ try{
     const lesson=(c,i)=>({classId:rooms[c].id,subject:subjects[((c+i*5)%48)%subjects.length]});
     for(const [name,members] of [['1학년 선택 A',[lesson(0,0),lesson(1,0)]],['1학년 선택 B',[lesson(2,3),lesson(3,3)]],['2학년 선택 A',[lesson(6,1),lesson(7,1)]]])
       await call('timetable/bundle-rules','POST',{id:id(),name,members});
+    // Events that take lessons this week, shown in those lessons as on Windows.
+    const week=new Date(Date.now()+9*3600000);week.setUTCDate(week.getUTCDate()-(week.getUTCDay()+6)%7);
+    const day=n=>new Date(week.getTime()+n*86400000).toISOString().slice(0,10)+'T00:00:00+09:00';
+    for(const [title,on,periods] of [['진로 특강',2,[3,4]],['학급 자치회의',4,[6]]])
+      await call('office/events','POST',{clientId:id(),title,description:'가상 일정',start:day(on),end:day(on+1),allDay:true,periods});
   }
   const fixtureData=Buffer.from(JSON.stringify({office,password}));
   app=spawn(path.join(bundle,'Contents/MacOS',executable.stdout.trim()),[],{env:{...process.env,YY_MAC_FIXTURE_B64:fixtureData.toString('base64')}});
