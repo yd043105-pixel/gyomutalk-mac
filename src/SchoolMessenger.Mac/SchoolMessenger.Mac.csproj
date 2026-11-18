@@ -20,8 +20,8 @@
     <Compile Include="../SchoolMessenger.Shared/AttachmentDownload.cs" Link="Shared/AttachmentDownload.cs" />
     <Compile Include="../SchoolMessenger.Shared/FolderAttachment.cs" Link="Shared/FolderAttachment.cs" />
     <EmbeddedResource Include="../SchoolMessenger.Shared/updates.json" LogicalName="SchoolMessenger.UpdateNotes.json" />
-    <MauiIcon Include="../SchoolMessenger.Shared/Branding/appicon.svg" ForegroundFile="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#245BC6" />
-    <MauiSplashScreen Include="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#245BC6" BaseSize="128,128" />
+    <MauiIcon Include="../SchoolMessenger.Shared/Branding/appicon.svg" ForegroundFile="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#2463EB" />
+    <MauiSplashScreen Include="../SchoolMessenger.Shared/Branding/appiconfg.svg" Color="#2463EB" BaseSize="128,128" />
     <MauiImage Include="../SchoolMessenger.Mobile/Resources/Images/*" Link="Resources/Images/%(Filename)%(Extension)" />
     <MauiImage Include="../SchoolMessenger.Shared/Branding/brand_mark.svg" Link="Resources/Images/brand_mark.svg" BaseSize="128,128" />
     <MauiFont Include="../SchoolMessenger.Mobile/Resources/Fonts/*.ttf" Link="Resources/Fonts/%(Filename)%(Extension)" />
