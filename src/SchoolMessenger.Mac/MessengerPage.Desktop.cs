@@ -92,8 +92,8 @@ public sealed partial class MessengerPage
     async Task MacPeople()
     {
         var source=api!;var version=epoch;var people=await source.Get("api/users");
-        RosterFolder[]? folders = null;
-        try { folders = (await source.Get("api/roster-folders")).Deserialize(MobileJson.Default.RosterFolders)?.Folders; }
+        RosterFolder[]? folders = null; var ordered = false;
+        try { var read = (await source.Get("api/roster-folders")).Deserialize(MobileJson.Default.RosterFolders); folders = read?.Folders; ordered = read?.Ordered == true; }
         catch (MessengerApiRefusal e) when (e.Status == 404) { }
         if(!Current(source,version))return;
         var directory = people.EnumerateArray().Select(person => (
@@ -129,7 +129,7 @@ public sealed partial class MessengerPage
             rows.Clear(); checks.Clear();
             var query = search.Text?.Trim() ?? "";
             var shown = directory.Values.Where(row => presence switch { "online" => State(row.Person) is { Online: true, Away: false }, "away" => State(row.Person) is { Online: true, Away: true }, _ => true });
-            var groups = RosterGroup.Build(folders, shown.Select(row => (row.Id, row.Name + " · " + row.Department, row.Department)).ToArray(), query, hideEmpty: presence != "all");
+            var groups = RosterGroup.Build(folders, shown.Select(row => (row.Id, row.Name + " · " + row.Department, row.Department)).ToArray(), query, hideEmpty: presence != "all", ordered: ordered);
             foreach (var group in groups) AddGroup(group, 0);
             if (rows.Children.Count == 0) rows.Add(query.Length>0||presence!="all"
                 ? DesktopEmptyState("일치하는 교직원이 없습니다",query.Length>0?"이름이나 부서, 폴더 이름을 바꿔 보세요.":"지금 이 상태인 교직원이 없습니다.")
@@ -150,7 +150,7 @@ public sealed partial class MessengerPage
                 rows.Add(header);
                 if (!expanded) return;
                 foreach (var child in group.Children) AddGroup(child, indent + 20);
-                foreach(var row in group.DirectIds.Select(id => directory[id]).OrderBy(p => p.Name))
+                foreach(var row in group.DirectIds.Select(id => directory[id]).OrderBy(p => ordered ? Array.IndexOf(group.DirectIds, p.Id) : 0).ThenBy(p => p.Name))
                 {
                     var person = row.Person;
                     var (online,away,phone)=State(person);
