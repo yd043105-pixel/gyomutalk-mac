@@ -99,7 +99,9 @@ public sealed partial class MessengerPage
         void Fit()
         {
             if(rail.Height<=0)return;var shown=desktopMenu.Values.Count(b=>b.IsVisible);
-            var room=(rail.Height-190)/Math.Max(1,shown)-4;var height=Math.Clamp(Math.Floor(room),38,62);var compact=height<52;
+            // Icons stay down to 48pt; below that the menu scrolls instead of losing them.
+            var room=(rail.Height-190)/Math.Max(1,shown)-4;var height=Math.Clamp(Math.Floor(room),48,62);var compact=false;
+            foreach(var item in desktopMenu.Values){item.FontSize=height<56?11:12;item.ContentLayout=new(Button.ButtonContentLayout.ImagePosition.Top,height<56?2:4);item.Padding=new Thickness(0,height<56?3:6);}
             if(compact==desktopRailCompact&&desktopMenu.Values.All(b=>b.HeightRequest==height))return;
             desktopRailCompact=compact;foreach(var item in desktopMenu.Values)item.HeightRequest=height;SelectRail(desktopRailSelected);
         }

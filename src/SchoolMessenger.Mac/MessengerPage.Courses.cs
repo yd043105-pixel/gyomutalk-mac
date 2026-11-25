@@ -50,7 +50,7 @@ public sealed partial class MessengerPage
             Start();
             var setup=await source.Get("api/courses/setup");var rounds=(await source.Get("api/courses/rounds")).EnumerateArray().ToArray();if(!Current(source,version))return;
             if(Flag(setup,"connected")&&!Flag(setup,"scriptCurrent"))body.Add(DesktopPanel(Text("교무톡이 업데이트되어 구글 스크립트를 새로 붙여넣어야 합니다. ‘구글 연결’에서 코드를 다시 복사해 새 버전으로 배포하세요.",13),12,SwapTangle));
-            if(!Flag(setup,"connected")){body.Add(DesktopEmptyState("먼저 구글을 연결하세요","학생 신청 화면은 학교 구글 계정의 앱스스크립트에서 열립니다. 처음 한 번만 연결하면 됩니다."));body.Add(Act("구글 연결하기",()=>MacCourses("connect"),true));return;}
+            if(!Flag(setup,"connected")){body.Add(DesktopEmptyState("먼저 구글을 연결하세요","학생 신청 화면은 학교 구글 계정의 앱스스크립트에서 열립니다. 처음 한 번만 연결하면 됩니다."));var go=Act("구글 연결하기",()=>MacCourses("connect"),true);go.HorizontalOptions=LayoutOptions.Center;body.Add(go);return;}
             var add=Act("새 신청 만들기",()=>Editor(null),true);add.HorizontalOptions=LayoutOptions.Start;add.AutomationId="mac-course-new";body.Add(add);
             if(rounds.Length==0){body.Add(DesktopEmptyState("아직 만든 신청이 없습니다",setup.GetProperty("grades").GetArrayLength()==0?"‘학생 명단’에 나이스 명단을 먼저 올린 뒤, 선택군과 과목을 넣어 신청을 만드세요.":"선택군과 과목을 넣어 신청을 만들고 학생 링크를 보내세요."));return;}
             foreach(var round in rounds)

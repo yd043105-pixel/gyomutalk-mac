@@ -276,7 +276,7 @@ public sealed partial class MessengerPage
         // follows the typing without rewriting the box, so Korean stays whole.
         var typed=new Entry{ClassId="school-field",Placeholder="이름 입력 후 Enter",FontSize=14,WidthRequest=170,BackgroundColor=Colors.Transparent,TextColor=Navy,PlaceholderColor=Faint,AutomationId="mac-recipient-input"};
         SemanticProperties.SetDescription(typed,"받는 사람 이름 입력");ToolTipProperties.SetText(typed,"이름이나 부서를 입력하고 Enter");
-        var suggestions=new VerticalStackLayout{Spacing=0};var suggestionBox=new Border{Content=new ScrollView{Content=suggestions,MaximumHeightRequest=220},Padding=4,BackgroundColor=Surface,Stroke=Line,StrokeThickness=1,StrokeShape=new RoundRectangle{CornerRadius=6},IsVisible=false,MaximumWidthRequest=360,HorizontalOptions=LayoutOptions.Start,AutomationId="mac-recipient-suggestions"};
+        var suggestions=new VerticalStackLayout{Spacing=0};var suggestionBox=new Border{Content=new ScrollView{Content=suggestions,MaximumHeightRequest=220},Padding=4,BackgroundColor=Surface,Stroke=Line,StrokeThickness=1,StrokeShape=new RoundRectangle{CornerRadius=6},IsVisible=false,MinimumWidthRequest=280,MaximumWidthRequest=360,HorizontalOptions=LayoutOptions.Start,AutomationId="mac-recipient-suggestions"};
         var locked=false;
         void ShowRecipients()
         {
