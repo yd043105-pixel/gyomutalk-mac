@@ -65,7 +65,12 @@ public sealed partial class MessengerPage : ContentPage
             return;
         }
         if(api is {Session.ValueKind:JsonValueKind.Object} source&&source.Session.GetProperty("user").ValueKind!=JsonValueKind.Null&&!covered)
+#if MAC_DESKTOP
+            // Closing a page on the Mac returns to the workspace as it was (chat, survey, mailbox); only the sign-in is checked.
+            await MacQuietly(source.Refresh);
+#else
             await Run(async()=>{await source.Refresh();if(source.Session.GetProperty("user").ValueKind!=JsonValueKind.Null)await Home();});
+#endif
     }
     static Label Text(string value,int size=15,bool bold=false)=>new(){Text=value,TextColor=Navy,FontSize=
 #if MACCATALYST
