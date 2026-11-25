@@ -295,7 +295,7 @@ internal static class MacRuntimeChecks
             var chatView=Views(Page.MacVerifyContent!).ToArray();var chatInput=chatView.OfType<Entry>().Single(e=>e.AutomationId=="mac-chat-input");
             chatInput.Text="내일 조회 때 체험학습 안내문을 같이 나눠 주세요.";
             ((IButtonController)chatView.OfType<Button>().Single(b=>b.AutomationId=="mac-chat-send")).SendClicked();
-            await Wait(()=>string.IsNullOrEmpty(chatInput.Text)&&Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.Text=="내일 조회 때 체험학습 안내문을 같이 나눠 주세요."));
+            await Wait(()=>string.IsNullOrEmpty(chatInput.Text)&&!chatInput.IsReadOnly&&Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.Text=="내일 조회 때 체험학습 안내문을 같이 나눠 주세요."));
             Check(!chatInput.IsReadOnly&&chatInput.IsEnabled,"Mac chat sends a line and keeps the box ready for the next one");
             var rooms=(await admin.Get("api/chats")).EnumerateArray().ToArray();var roomId=rooms.First(r=>r.GetProperty("members").EnumerateArray().Any(m=>m.GetProperty("id").GetString()==sample)).GetProperty("id").GetString()!;
             Check((await Page.MacVerifyArchive()).ChatEntries(roomId).Any(e=>e.GetProperty("body").GetString()!.Contains("체험학습 안내문")),"Mac keeps its own sealed copy of the chat room");
