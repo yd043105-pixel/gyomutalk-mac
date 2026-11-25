@@ -20,6 +20,8 @@ public sealed partial class MessengerPage
         if(selectedClass is not null){var index=Array.FindIndex(rooms,r=>r.GetProperty("id").GetString()==selectedClass);if(index>=0)scope.SelectedIndex=index+(teacher?1:0);}
         stack.Add(Text("시간표",22,true));
         var hint=Text(teacher?"내 수업과 학급별 시간표":"학급별 시간표",12);hint.TextColor=Muted;stack.Add(hint);
+        // Changes to this teacher's lessons, as on Windows: pressing one shows that day and marks it read.
+        var notices=new VerticalStackLayout{Spacing=6};stack.Add(notices);
         // One control row as on Windows: day or week, the week itself with arrows and "today", the timetable to show on the right.
         // The date picker stays as the place the chosen day is kept.
         SemanticProperties.SetDescription(date,"조회 날짜 · 한국 시간");SemanticProperties.SetDescription(scope,"조회할 시간표");
@@ -44,6 +46,7 @@ public sealed partial class MessengerPage
             var swap=DesktopButton("수업 교체 신청",()=>MacSwapBoard(source,date.Date??DateTime.Today,manager),true);swap.AutomationId="mac-swap-board";scheduleTools.Add(swap);
             scheduleTools.Add(DesktopButton("교체 신청 현황",()=>MacSwapQueue(source,setup,manager)));
             if(manager) scheduleTools.Add(DesktopButton("묶음수업",()=>MacBundleEditor(source)));
+            if(manager) scheduleTools.Add(DesktopButton("게시 이력",()=>MacScheduleHistory(source)));
             scheduleTools.Add(printButton);
             foreach(var tool in scheduleTools.Children.OfType<View>())tool.Margin=new Thickness(0,0,8,6);
             stack.Add(scheduleTools);
@@ -178,6 +181,27 @@ public sealed partial class MessengerPage
         previous.Clicked+=async(_,_)=>await Move(-1);next.Clicked+=async(_,_)=>await Move(1);
         today.Clicked+=async(_,_)=>{date.Date=DateTime.UtcNow.AddHours(9).Date;await Show(current);};
         scope.SelectedIndexChanged+=async(_,_)=>{if(!loading)await Show(current);};
+        async Task Notices()
+        {
+            notices.Clear();JsonElement list;
+            try{list=await source.Get("api/timetable/notices");}catch(MessengerApiRefusal e)when(e.Status is 403 or 404){return;}
+            var unread=list.EnumerateArray().Where(n=>n.GetProperty("readAt").ValueKind!=JsonValueKind.Number).OrderBy(n=>n.GetProperty("date").GetString(),StringComparer.Ordinal).ToArray();
+            async Task Read(JsonElement n)=>await source.Send("api/timetable/notices/"+n.GetProperty("revision").GetInt64().ToString(CultureInfo.InvariantCulture)+"/read");
+            if(unread.Length>1){var all=DesktopButton("알림 모두 확인",async()=>{foreach(var n in unread)await Read(n);await Notices();});SubtleButton(all);all.HorizontalOptions=LayoutOptions.Start;notices.Add(all);}
+            foreach(var n in unread.Take(5))
+            {
+                var note=DesktopButton(n.GetProperty("title").GetString()??"시간표가 변경되었습니다",async()=>
+                {
+                    date.Date=DateTime.ParseExact(n.GetProperty("date").GetString()!,"yyyy-MM-dd",CultureInfo.InvariantCulture);
+                    var classes=n.GetProperty("classIds").EnumerateArray().Select(c=>c.GetString()).ToHashSet();
+                    var index=Array.FindIndex(rooms,r=>classes.Contains(r.GetProperty("id").GetString()));if(index>=0)scope.SelectedIndex=index+(teacher?1:0);
+                    await Read(n);await Show(false);await Notices();
+                });
+                note.BackgroundColor=ChangeTint;note.TextColor=ChangeInk;note.BorderWidth=0;note.HorizontalOptions=LayoutOptions.Start;note.FontSize=14;note.AutomationId="mac-timetable-notice";
+                ToolTipProperties.SetText(note,"누르면 그 날짜의 시간표를 봅니다.");notices.Add(note);
+            }
+        }
+        await Notices();
         await Show(selectedDate is null);if(!MacScheduleActive(source))return false;timetablePage=page;await Navigation.PushAsync(page);return loaded;
     }
 }

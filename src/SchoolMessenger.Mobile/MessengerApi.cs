@@ -241,4 +241,8 @@ internal record MobileEmpty;
 [JsonSerializable(typeof(TimetablePreviewRequest))]
 [JsonSerializable(typeof(TimetableCommit))]
 [JsonSerializable(typeof(TimetableDay))]
+[JsonSerializable(typeof(TimetableUnavailableUpdate))]
+[JsonSerializable(typeof(TimetableSuggestionRequest))]
+[JsonSerializable(typeof(TimetableSuggestion[]))]
+[JsonSerializable(typeof(TimetableLink[]))]
 internal partial class MobileJson:JsonSerializerContext;

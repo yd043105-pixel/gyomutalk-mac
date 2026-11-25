@@ -141,7 +141,7 @@ public sealed partial class MessengerPage : ContentPage
         }
         var userId=source.Session.GetProperty("user").GetProperty("id").GetString();
         ConfigureDesktopDetail(page,value,source);
-        if(value.GetProperty("recipients").EnumerateArray().Any(r=>r.GetProperty("id").GetString()==userId))await source.Send("api/messages/"+id+"/read");
+        if(value.GetProperty("recipients").EnumerateArray().Any(r=>r.GetProperty("id").GetString()==userId)){await source.Send("api/messages/"+id+"/read");_=MacQuietly(()=>MacCountUnread(source));}
         if(!Current(source,version))return;var handled=false;DisplayDesktopDetail(page,ref handled);if(!handled)await Navigation.PushAsync(page);
     }
     const string PurgedBody="이 메시지 본문은 PC 교무톡에 보관되어 있어 이 기기에서는 볼 수 없습니다. PC에서 확인하세요.";

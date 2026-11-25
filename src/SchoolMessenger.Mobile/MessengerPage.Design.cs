@@ -99,6 +99,44 @@ public sealed partial class MessengerPage
         }
         Action("로그인",()=>Connect(false),true);
         var restore=Action("저장된 로그인으로 접속",()=>Connect(true));restore.BackgroundColor=Colors.Transparent;restore.TextColor=Muted;restore.FontSize=12;
+        // 계정 신청, as on the Windows sign-in: the administrator approves it once, then the teacher signs in.
+        var register=Action("처음 사용하시나요? 계정 신청",()=>{RequireServerAddress(address.Text);return MacRegister(address.Text??"");});register.BackgroundColor=Colors.Transparent;register.TextColor=Blue;register.FontSize=12;register.AutomationId="mac-register";
+    }
+    async Task MacRegister(string address)
+    {
+        var page=DesktopPage("계정 신청");var stack=new VerticalStackLayout{Padding=new Thickness(28,20),Spacing=8,MaximumWidthRequest=520};((Grid)page.Content).Add(new ScrollView{Content=stack},0,1);
+        stack.Add(Text("계정 신청",22,true));var intro=Text("관리자가 한 번 승인하면 로그인할 수 있습니다.",13);intro.TextColor=Muted;stack.Add(intro);
+        Entry Field(string label,string? note=null,bool secret=false)
+        {
+            stack.Add(Text(label,12,true));var box=new Entry{ClassId="school-field",IsPassword=secret,FontSize=15,TextColor=Navy};stack.Add(DesktopPanel(box,6));
+            if(note is not null){var hint=Text(note,11);hint.TextColor=Muted;stack.Add(hint);}return box;
+        }
+        var name=Field("이름","로그인할 때도 이 이름을 씁니다. 같은 이름이 이미 있으면 홍길동.2처럼 뒤에 숫자를 붙이세요.");
+        var department=Field("부서");var password=Field("비밀번호 · 8~128자",null,true);var confirm=Field("비밀번호 확인",null,true);
+        var result=Text("",13);result.TextColor=Blue;
+        var send=DesktopButton("관리자에게 계정 신청",null,true);send.AutomationId="mac-register-send";send.Margin=new Thickness(0,10,0,0);stack.Add(send);stack.Add(result);
+        var note=Text("승인 전에는 메시지와 교직원 목록에 접근할 수 없습니다.",11);note.TextColor=Faint;stack.Add(note);
+        page.Disappearing+=(_,_)=>{password.Text="";confirm.Text="";};
+        var sending=false;
+        send.Clicked+=async(_,_)=>
+        {
+            if(sending)return;
+            if((password.Text??"")!=(confirm.Text??"")){result.TextColor=Danger;result.Text="비밀번호 확인이 일치하지 않습니다.";return;}
+            sending=true;send.IsEnabled=false;
+            try
+            {
+                await ConfirmingCertificate(address,async()=>
+                {
+                    using var source=new MessengerApi(address,true);
+                    var answer=await MacSend(source,"api/register",new System.Text.Json.Nodes.JsonObject{["username"]=name.Text?.Trim()??"",["department"]=department.Text?.Trim()??"",["password"]=password.Text??""});
+                    password.Text="";confirm.Text="";result.TextColor=Blue;result.Text=answer.GetProperty("message").GetString()??"신청했습니다.";
+                    send.Text="신청 완료 · 승인 후 로그인하세요";
+                });
+            }
+            catch(Exception error){result.TextColor=Danger;result.Text=error is HttpRequestException?"학교 서버에 연결할 수 없습니다. 주소·교내망/VPN을 확인하세요.":error.Message;send.IsEnabled=true;}
+            finally{sending=false;}
+        };
+        await Navigation.PushAsync(page);
     }
 
     partial void ResetDesktopView();
@@ -117,8 +155,13 @@ public sealed partial class MessengerPage
         Header(name+"님, 안녕하세요",homeTab=="account"?"내 정보":"온라인 교무실",true);NavigationTabs(true);
         await ShowUpdates();if(!Current(source,version))return;
         if(homeTab!="account"){await DesktopMailbox();return;}
-        desktopContent.Content=desktopShared;desktopReader=null;
+        MacShowPane("account",desktopShared);desktopReader=null;
         var info=new VerticalStackLayout{Spacing=5};info.Add(Text(name,18,true));info.Add(Text("교직원 계정",12));body.Add(Card(info));
+        // The same switches as the Windows settings menu; they are kept on this Mac only.
+        SwitchRow("알림 소리 끄기","새 메시지·채팅 알림이 소리 없이 뜹니다.",MacQuiet,on=>MacQuiet=on,"mac-setting-quiet");
+        SwitchRow("방해금지","알림 배너를 띄우지 않습니다. 왼쪽 메뉴의 숫자는 그대로 보입니다.",MacDoNotDisturb,on=>MacDoNotDisturb=on,"mac-setting-dnd");
+        SwitchRow("조직도 작게 보기","조직도에서 한 사람을 한 줄로 작게 보여 스크롤을 덜 합니다.",MacCompactRoster,on=>MacCompactRoster=on,"mac-setting-compact");
+        if(MacFeature("ai"))SettingRow("AI 연결",()=>MacAiSettings());
         SettingRow("비밀번호 변경",()=>{OfficePasswordChange();return Task.CompletedTask;});
         SettingRow("개인정보 안내",PolicyMenu);SettingRow("개인정보 열람·정정·삭제 요청",PrivacyRequests);
         SettingRow("업데이트 내역",()=>ShowUpdates(true));SettingRow("오류 신고 · 개선 의견",Feedback);
@@ -135,6 +178,13 @@ public sealed partial class MessengerPage
             button.CornerRadius=12;grid.Add(button,index%2,index/2);
         }
         return grid;
+    }
+    void SwitchRow(string label,string note,bool value,Action<bool> change,string id)
+    {
+        var words=new VerticalStackLayout{Spacing=2,VerticalOptions=LayoutOptions.Center};words.Add(Text(label,14,true));var hint=Text(note,11);hint.TextColor=Muted;words.Add(hint);
+        var toggle=new Switch{IsToggled=value,AutomationId=id,VerticalOptions=LayoutOptions.Center};toggle.Toggled+=(_,e)=>change(e.Value);
+        SemanticProperties.SetDescription(toggle,label);
+        var row=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=12};row.Add(words);row.Add(toggle,1);body.Add(Card(row,12));
     }
     void SettingRow(string label,Func<Task> action)
     {

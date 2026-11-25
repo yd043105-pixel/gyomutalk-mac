@@ -25,6 +25,15 @@ public sealed partial class MessengerPage
     async Task MacWork(string mode="todos",string? select=null,int pageIndex=0)
     {
         var source=api!;var version=epoch;var rows=await source.Get("api/"+mode+"?offset="+pageIndex*100);if(!Current(source,version))return;
+        // Suggestions come from this Mac's copies of the messages; they sit after the tasks in progress, as on Windows.
+        if(mode=="todos"&&pageIndex==0&&desktopArchive?.Owner==source)
+        {
+            JsonElement[] suggested;try{suggested=desktopArchive.AllSuggestions();}catch(Exception e)when(e is IOException or JsonException or InvalidOperationException){suggested=[];}
+            var all=rows.EnumerateArray().ToArray();
+            var ideas=suggested.Select(x=>new JsonObject{["id"]=Field(x,"id"),["title"]=Field(x,"title"),["dueDate"]=Field(x,"dueDate"),["dueTime"]=Field(x,"dueTime"),["status"]="suggested",["revision"]=0,["sourceId"]=Field(x,"messageId"),["evidence"]=Field(x,"evidence")}.ToJsonString());
+            var text="["+string.Join(",",all.TakeWhile(r=>Field(r,"status")=="open").Select(r=>r.GetRawText()).Concat(ideas).Concat(all.SkipWhile(r=>Field(r,"status")=="open").Select(r=>r.GetRawText())))+"]";
+            using var document=JsonDocument.Parse(text);rows=document.RootElement.Clone();
+        }
         desktopReader=null;macSubmissionTargets=null;
         var root=new Grid{RowDefinitions={new(GridLength.Auto),new(GridLength.Star)},BackgroundColor=Surface};
         var toolbar=new Grid{Padding=new Thickness(28,18,24,16),ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=12,BackgroundColor=Surface};
@@ -56,7 +65,7 @@ public sealed partial class MessengerPage
         if(rows.GetArrayLength()==0){var none=Text(mode=="todos"?"등록된 할 일이 없습니다":"주고받은 제출 요청이 없습니다",12);none.TextColor=Muted;items.Add(none);}
         list.Add(new ScrollView{Content=items});
         var full=rows.GetArrayLength()==100;var more=DesktopButton(full?"다음 목록":"새로고침",()=>MacWork(mode,null,full?pageIndex+1:pageIndex));more.FontSize=13;more.MinimumHeightRequest=36;list.Add(more,0,1);panes.Add(list);
-        desktopContent.Content=root;
+        MacShowPane("work",root);
         SelectRail("work");
         var initial=select is null?-1:choices.FindIndex(c=>c.Id==select);
         if(initial>=0)await Open(rows[initial],choices[initial].Row);else if(select is not null&&mode=="submission-requests")await MacSubmission(source,version,select,detail);
@@ -83,10 +92,20 @@ public sealed partial class MessengerPage
         stack.Add(Text("기한 · 선택",12,true));stack.Add(DesktopPanel(dueRow,8));
         string[] statuses=["open","done","dismissed"];
         var picker=new Picker{ClassId="school-field",AutomationId="mac-todo-status",Title="상태",ItemsSource=statuses.Select(s=>TodoStatus(s)).ToArray(),SelectedIndex=Math.Max(0,Array.IndexOf(statuses,status)),IsEnabled=item is not null,TextColor=Navy};
+        if(status=="suggested"){var why=Text("메시지에서 찾은 할 일입니다. 확인하고 등록하거나 상태를 ‘제외’로 바꿔 저장하세요.",12);why.TextColor=Muted;stack.Add(why);}
         stack.Add(Text("상태",12,true));stack.Add(DesktopPanel(picker,8));
         var save=DesktopButton(status=="suggested"?"확인 후 등록":"저장",async()=>
         {
             if(!Current(source,version))return;
+            // A suggestion becomes a real task (or is dismissed) and leaves this Mac's list either way.
+            if(item is{} idea&&Field(idea,"status")=="suggested")
+            {
+                var chosen=statuses[Math.Max(0,picker.SelectedIndex)];
+                var day=dated.IsChecked&&date.Date is{} picked?picked.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture):null;
+                if(chosen!="dismissed")await MacSend(source,"api/todos",new JsonObject{["title"]=title.Text??"",["dueDate"]=day,["dueTime"]=day==Field(idea,"dueDate")?TodoTime(idea):null,["status"]="open",["revision"]=0,["sourceId"]=Field(idea,"sourceId")});
+                if(desktopArchive?.Owner==source&&Field(idea,"sourceId") is{} message&&Field(idea,"id") is{} suggestion)desktopArchive.Decide(message,suggestion);
+                await MacWork("todos");feedback.Text=chosen=="dismissed"?"추천을 제외했습니다.":"할 일로 등록했습니다.";return;
+            }
             var id=item is{} existing?Field(existing,"id"):null;
             var dueDate=dated.IsChecked&&date.Date is{} day?day.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture):null;
             var payload=new JsonObject{["title"]=title.Text??"",["dueDate"]=dueDate,["dueTime"]=item is{} kept&&dueDate==Field(kept,"dueDate")?TodoTime(kept):null,["status"]=statuses[Math.Max(0,picker.SelectedIndex)],["revision"]=item is{} old?old.GetProperty("revision").GetInt32():0};

@@ -38,6 +38,16 @@ public sealed partial class MessengerPage
     internal Grid? MacVerifySubmissionTargets=>macSubmissionTargets;
     internal bool MacVerifyIdle=>!busy;
     internal bool MacVerifyReady=>!busy&&!resuming&&desktopReader?.Content is Grid;
+    internal Task MacVerifyChat(string[]? members=null)=>MacChat(members:members);
+    internal Task MacVerifySurveys(bool create=false)=>MacSurveys(create?"sent":"received",null,create);
+    internal Task MacVerifyCourses(string tab)=>MacCourses(tab);
+    internal Task MacVerifyAi()=>MacAiSettings();
+    internal Task MacVerifyRegister(string address)=>MacRegister(address);
+    internal async Task MacVerifySettings(){homeTab="account";await Home();}
+    internal (int Mail,int Chat) MacVerifyUnread=>(macUnreadMail,macUnreadChat);
+    internal Task MacVerifyCount()=>MacCountUnread(api!);
+    internal bool MacVerifyRail(string key)=>desktopMenu.TryGetValue(key,out var b)&&b.IsVisible;
+    internal static bool MacVerifyCompact{set=>MacCompactRoster=value;}
     internal async Task MacVerifyLogout(){var source=api!;await source.Logout();source.Dispose();api=null;Login();}
 }
 internal static class MacRuntimeChecks
@@ -180,6 +190,33 @@ internal static class MacRuntimeChecks
             Check(Views(boardPage.Content).OfType<Button>().Any(button=>button.AutomationId=="mac-board-submit"&&!button.IsEnabled),"The request button waits until a lesson has been moved");
             await Capture("mac-swap-board.png");
             await Page.Navigation.PopAsync();
+            // A period marked as impossible shows on the board, and the helper answers for one of the teacher's periods.
+            var korea=DateTime.UtcNow.AddHours(9).Date;var monday=korea.AddDays(-(((int)korea.DayOfWeek+6)%7));
+            var later=Enumerable.Range(0,5).Select(i=>monday.AddDays(i)).FirstOrDefault(d=>d>korea);
+            if(later!=default)
+            {
+                var day=later.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);
+                var week=Enumerable.Range(0,5).Select(i=>monday.AddDays(i).ToString("yyyy-MM-dd",CultureInfo.InvariantCulture)).Where(d=>string.CompareOrdinal(d,day)>=0).ToArray();
+                JsonObject Marks(params int[] periods)=>new(){["dates"]=new JsonArray(week.Select(d=>(JsonNode?)JsonValue.Create(d)).ToArray()),["times"]=new JsonArray(periods.Select(p=>(JsonNode?)new JsonObject{["date"]=day,["period"]=p}).ToArray())};
+                await Page.MacVerifyApi.Send("api/timetable/unavailable",content:Json(Marks(1,2,3,4,5,6,7)),method:HttpMethod.Put);
+                await Page.MacVerifySwapBoard();var marked=(ContentPage)Page.Navigation.NavigationStack.Last();
+                await Wait(()=>Views(marked.Content).OfType<Label>().Any(l=>l.AutomationId=="mac-board-blocked"||l.Text?.StartsWith("⊘",StringComparison.Ordinal)==true));
+                Check(Views(marked.Content).OfType<CheckBox>().Any(c=>c.AutomationId=="mac-board-marking")&&Views(marked.Content).OfType<Button>().Any(b=>b.AutomationId=="mac-board-helper"),"Mac swap board shows marked periods with the marking switch and the swap helper");
+                Views(marked.Content).OfType<CheckBox>().Single(c=>c.AutomationId=="mac-board-marking").IsChecked=true;await Task.Delay(1500);
+                await Capture("mac-swap-board-marked.png");
+                await Page.MacVerifyApi.Send("api/timetable/unavailable",content:Json(Marks()),method:HttpMethod.Put);
+                var board=(ContentPage)Page.Navigation.NavigationStack.Last();
+                await Wait(()=>Views(board.Content).OfType<Button>().Any(b=>b.AutomationId=="mac-board-helper"));
+                ((IButtonController)Views(board.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-board-helper")).SendClicked();
+                await Wait(()=>Page.Navigation.NavigationStack.Last() is ContentPage help&&help!=board);
+                var helper=(ContentPage)Page.Navigation.NavigationStack.Last();
+                Views(helper.Content).OfType<CheckBox>().First(c=>c.AutomationId=="mac-helper-period-3").IsChecked=true;
+                ((IButtonController)Views(helper.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-helper-find")).SendClicked();
+                await Wait(()=>Views(helper.Content).OfType<Label>().Any(l=>l.AutomationId=="mac-helper-note"&&!string.IsNullOrEmpty(l.Text)));
+                Check(true,"Mac swap helper finds ways to empty a period or says why there are none");
+                await Capture("mac-swap-helper.png");
+                while(Page.Navigation.NavigationStack.Count>1)await Page.Navigation.PopAsync();
+            }
             await Page.MacVerifyBundles();
             var bundlePage=(ContentPage)Page.Navigation.NavigationStack.Last();
             await Wait(()=>Views(bundlePage.Content).OfType<Label>().Any(label=>label.Text=="1학년 선택 A"));
@@ -204,8 +241,8 @@ internal static class MacRuntimeChecks
             await Page.MacVerifyCompose();var compose=(ContentPage)Page.Navigation.NavigationStack.Last();var controls=Views(compose.Content).ToArray();
             Check(controls.Single(v=>v.AutomationId=="mac-compose-attachment-drop").Handler?.PlatformView is UIView dropView&&dropView.Interactions.Any(i=>i is UIDropInteraction),"The native message composer installs a folder drop interaction");
             Check(!MacUpdater.CanInstall,"updater defers installation while a message composer is open");
-            ((IButtonController)controls.OfType<Button>().Single(b=>b.Text=="나에게 전송")).SendClicked();
-            controls.OfType<Entry>().Single().Text="Mac 네이티브 전송 검증";controls.OfType<Editor>().Single().Text="가상 학교 데이터로 Mac 메시지 작성과 수신 연결을 검사합니다.";await Capture("mac-compose.png");
+            controls.OfType<CheckBox>().Single(c=>c.AutomationId=="mac-compose-self").IsChecked=true;
+            controls.OfType<Entry>().Single(e=>e.AutomationId=="mac-compose-title").Text="Mac 네이티브 전송 검증";controls.OfType<Editor>().Single().Text="가상 학교 데이터로 Mac 메시지 작성과 수신 연결을 검사합니다.";await Capture("mac-compose.png");
             var send=controls.OfType<Button>().Single(b=>b.AutomationId=="mac-send");((IButtonController)send).SendClicked();
             await Wait(()=>Page.Navigation.NavigationStack.Count==1&&Page.MacVerifyReady);
             var rows=await Page.MacVerifyApi.Get("api/messages?box=sent&offset=0");var sent=rows.EnumerateArray().Single(r=>!previousIds.Contains(r.GetProperty("id").GetString()));
@@ -252,9 +289,74 @@ internal static class MacRuntimeChecks
             work.OfType<Picker>().Single(p=>p.AutomationId=="mac-todo-status").SelectedIndex=1;((IButtonController)work.OfType<Button>().Single(b=>b.AutomationId=="mac-todo-save")).SendClicked();
             var saved=false;for(var i=0;i<100&&!saved;i++){await Task.Delay(100);saved=(await admin.Get("api/todos?offset=0")).EnumerateArray().Any(t=>t.GetProperty("id").GetString()==todoId&&t.GetProperty("status").GetString()=="done");}
             Check(saved,"Editing a to-do on Mac saves through PATCH with its revision");await Wait(()=>Page.MacVerifyIdle);
+            // Chat: a room with a colleague, a line sent, kept on this Mac.
+            await Page.MacVerifyChat([sample]);
+            await Wait(()=>Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.AutomationId=="mac-chat-title"&&l.Text=="가상 교사 가"));
+            var chatView=Views(Page.MacVerifyContent!).ToArray();var chatInput=chatView.OfType<Entry>().Single(e=>e.AutomationId=="mac-chat-input");
+            chatInput.Text="내일 조회 때 체험학습 안내문을 같이 나눠 주세요.";
+            ((IButtonController)chatView.OfType<Button>().Single(b=>b.AutomationId=="mac-chat-send")).SendClicked();
+            await Wait(()=>string.IsNullOrEmpty(chatInput.Text)&&Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.Text=="내일 조회 때 체험학습 안내문을 같이 나눠 주세요."));
+            Check(!chatInput.IsReadOnly&&chatInput.IsEnabled,"Mac chat sends a line and keeps the box ready for the next one");
+            var rooms=(await admin.Get("api/chats")).EnumerateArray().ToArray();var roomId=rooms.First(r=>r.GetProperty("members").EnumerateArray().Any(m=>m.GetProperty("id").GetString()==sample)).GetProperty("id").GetString()!;
+            Check((await Page.MacVerifyArchive()).ChatEntries(roomId).Any(e=>e.GetProperty("body").GetString()!.Contains("체험학습 안내문")),"Mac keeps its own sealed copy of the chat room");
+            await Capture("mac-chat.png");
+            // Unread counts: a colleague's message raises the number on the sidebar.
+            using(var colleague=new MessengerApi(office,true))
+            {
+                await colleague.Login("mac.work.2",password,false);
+                await colleague.Send("api/messages",content:Json(new JsonObject{["clientId"]=Guid.NewGuid().ToString(),["title"]="Mac 알림 검증",["body"]="안 읽은 개수를 확인합니다.",["recipientIds"]=new JsonArray((JsonNode?)JsonValue.Create(admin.Session.GetProperty("user").GetProperty("id").GetString())),["attachmentIds"]=new JsonArray(),["all"]=false}));
+                await colleague.Logout();
+            }
+            for(var i=0;i<100&&Page.MacVerifyUnread.Mail==0;i++){await Page.MacVerifyCount();await Task.Delay(100);}
+            Check(Page.MacVerifyUnread.Mail>0&&Views(Page.Content).OfType<Border>().Any(b=>b.AutomationId=="mac-badge-received"&&b.IsVisible),"A new message shows its count on the Mac sidebar");
+            // Surveys: the form, then a sent survey with its results.
+            await Page.MacVerifySurveys(true);await Wait(()=>Views(Page.MacVerifyContent!).OfType<Entry>().Any(e=>e.AutomationId=="mac-survey-new-title"));
+            var surveyForm=Views(Page.MacVerifyContent!).ToArray();
+            surveyForm.OfType<Entry>().Single(e=>e.AutomationId=="mac-survey-new-title").Text="Mac 설문 검증";surveyForm.OfType<Entry>().First(e=>e.AutomationId=="mac-survey-question").Text="체험학습 날짜로 좋은 날은?";
+            await Capture("mac-survey-new.png");
+            await admin.Send("api/surveys",content:Json(new JsonObject{["title"]="Mac 설문 검증",["description"]="",["deadline"]=DateTimeOffset.UtcNow.AddDays(3).ToUnixTimeMilliseconds(),["questions"]=new JsonArray(new JsonObject{["text"]="체험학습 날짜로 좋은 날은?",["kind"]="choice",["required"]=true,["options"]=new JsonArray("금요일","월요일")}),["targetIds"]=new JsonArray((JsonNode?)JsonValue.Create(staff[0])),["all"]=false,["anonymous"]=false}));
+            await Page.MacVerifySurveys();
+            ((IButtonController)Views(Page.MacVerifyContent!).OfType<Button>().Single(b=>b.AutomationId=="mac-survey-sent")).SendClicked();
+            await Wait(()=>Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.AutomationId=="mac-survey-summary"));
+            Check(Views(Page.MacVerifyContent!).OfType<Label>().Any(l=>l.AutomationId=="mac-survey-title"&&l.Text=="Mac 설문 검증"),"Mac shows a sent survey with its results");
+            await Capture("mac-surveys.png");
+            // Org chart in one short line per person.
+            MessengerPage.MacVerifyCompact=true;await Page.MacVerifyPeople();
+            var compact=((ContentPage)Page.Navigation.NavigationStack.Last()).Content!;
+            Check(Views(compact).OfType<Border>().Any(b=>b.AutomationId=="mac-roster-row-compact")&&Views(compact).OfType<Button>().Any(b=>b.AutomationId=="mac-roster-favorites"),"Mac org chart has the compact view and the favourites filter");
+            await Capture("mac-roster-compact.png");MessengerPage.MacVerifyCompact=false;await Page.Navigation.PopAsync();
+            // Typing a recipient's name lists them; Enter adds the chip. Leaving keeps a draft.
+            await Page.MacVerifyCompose();var writing=(ContentPage)Page.Navigation.NavigationStack.Last();var typed=Views(writing.Content).OfType<Entry>().Single(e=>e.AutomationId=="mac-recipient-input");
+            typed.Text="가상교사0";
+            await Wait(()=>Views(writing.Content).OfType<Border>().Any(b=>b.AutomationId=="mac-recipient-suggestions"&&b.IsVisible));
+            await Capture("mac-compose-recipient.png");
+            typed.SendCompleted();
+            await Wait(()=>Views(writing.Content).OfType<Label>().Any(l=>l.Text=="받는 사람 1명"));
+            Check(string.IsNullOrEmpty(typed.Text),"Mac composer adds a recipient typed by name");
+            Views(writing.Content).OfType<Editor>().Single(e=>e.AutomationId=="mac-compose-body").Text="임시저장 확인용 가상 본문";
+            await Page.Navigation.PopAsync();
+            var drafts=(await Page.MacVerifyArchive()).Drafts();
+            Check(drafts.Any(d=>d.GetProperty("body").GetString()=="임시저장 확인용 가상 본문"),"Leaving the Mac composer keeps a sealed draft");
+            foreach(var d in drafts)(await Page.MacVerifyArchive()).DeleteDraft(d.GetProperty("id").GetString()!);
+            // Settings, AI connection, a switched-off menu and 수강신청.
+            await Page.MacVerifySettings();await Wait(()=>Views(Page.Content).OfType<Switch>().Any(t=>t.AutomationId=="mac-setting-dnd"));
+            Check(true,"Mac settings offer sound off, do not disturb and the compact org chart");
+            await Capture("mac-settings.png");
+            await Page.MacVerifyAi();await Capture("mac-ai.png");await Page.Navigation.PopAsync();
+            await admin.Send("api/admin/features",content:Json(new JsonObject{["name"]="chat",["enabled"]=false}));
+            await Wait(()=>!Page.MacVerifyRail("chat"));
+            Check(!Page.MacVerifyRail("chat"),"A menu the administrator switched off disappears from the Mac sidebar");
+            await admin.Send("api/admin/features",content:Json(new JsonObject{["name"]="chat",["enabled"]=true}));
+            await Wait(()=>Page.MacVerifyRail("chat"));
+            await admin.Send("api/admin/office/permissions",content:Json(new JsonObject{["userId"]=admin.Session.GetProperty("user").GetProperty("id").GetString(),["calendarManager"]=true,["roomManager"]=true,["courseManager"]=true}));
+            await Page.MacVerifyCourses("rounds");await Task.Delay(800);await Capture("mac-courses.png");
+            await Page.MacVerifyCourses("connect");await Wait(()=>Views(Page.MacVerifyContent!).OfType<Entry>().Any(e=>e.AutomationId=="mac-course-url"));
+            Check(true,"Mac 수강신청 shows rounds and the Google connection steps");
+            await Capture("mac-courses-connect.png");
             await Page.MacVerifyLogout();
             Check(!Page.MacVerifyConnected,"Logout closes the desktop connection");
             Check(Page.MacVerifyReader is null&&!Views(Page.Content).OfType<Button>().Any(b=>b.AutomationId?.StartsWith("mac-message-")==true),"Logout removes the message reader and restores the login screen");
+            await Page.MacVerifyRegister(fixture.GetProperty("office").GetString()!.Replace("127.0.0.1","localhost"));await Capture("mac-register.png");await Page.Navigation.PopAsync();
             try{_ =new MessengerApi("http://example.com",true);throw new InvalidOperationException("Unsafe HTTP accepted");}catch(InvalidOperationException e)when(e.Message.Contains("https://")){Check(true,"Non-local cleartext server address is rejected");}
             await File.WriteAllTextAsync(report+".tmp",JsonSerializer.Serialize(new{ok=true,passed}));File.Move(report+".tmp",report,true);
         }

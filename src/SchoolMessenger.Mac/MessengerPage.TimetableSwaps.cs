@@ -64,6 +64,9 @@ public sealed partial class MessengerPage
         {
             var requests = (await source.Get("api/timetable/swaps")).Deserialize(MobileJson.Default.TimetableSwapArray)!;
             if (!MacScheduleActive(source)) return;
+            // What this page showed stops the five-minute reminder for those requests.
+            var waiting = requests.Where(s => s.Status is "pending" or "review").Select(s => s.Id).ToArray();
+            if (manager) MarkMacSwapsSeen(waiting, waiting);
             rows.Children.Clear();
             selected.Clear();
             var byId = requests.ToDictionary(s => s.Id);
@@ -100,6 +103,15 @@ public sealed partial class MessengerPage
         ui.Add("새로 고침", Reload);
         if (manager)
         {
+            // The board already checked every rule, so a request can be approved and published without a NEIS file.
+            ui.Add("선택 신청 승인·게시", async () =>
+            {
+                var ids = selected.Where(p => p.Value.IsChecked).Select(p => p.Key).ToArray();
+                if (ids.Length == 0) throw new InvalidOperationException("승인할 신청을 선택하세요.");
+                if (!await DisplayAlertAsync("교체 신청 승인", $"선택한 신청 {ids.Length}건을 승인하고 시간표에 게시할까요? 관련 선생님께 알림이 갑니다.", "승인·게시", "닫기") || !MacScheduleActive(source)) return;
+                await MacSend(source, "api/timetable/swaps/approve", new System.Text.Json.Nodes.JsonObject { ["candidateId"] = "", ["clientId"] = MacScheduleId(), ["swapIds"] = new System.Text.Json.Nodes.JsonArray(ids.Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray()) });
+                await Reload(); ui.Status.Text = $"신청 {ids.Length}건을 승인하고 시간표에 게시했습니다.";
+            });
             ui.Add("선택 신청 승인·나이스 파일 선택", async () =>
             {
                 var ids = selected.Where(p => p.Value.IsChecked).Select(p => p.Key).ToArray();
@@ -135,18 +147,29 @@ public sealed partial class MessengerPage
             if (!MacScheduleActive(source)) return;
         }
         var ui = MacSchedulePage(source, ids.Length == 0 ? "시간표 게시" : $"교체 신청 {ids.Length}건 승인·게시");
-        var links = new List<(string Name, string[] Ids, Picker Picker)>();
-        foreach (var person in imports.SelectMany(d => d.GetProperty("teachers").EnumerateArray())
-            .DistinctBy(t => t.GetProperty("source").GetString()))
+        // Names shared by several accounts get one choice per subject they teach, as on Windows; the server remembers the
+        // choice and fills it in next time. An older server sends no subjects, so the choice is per name.
+        var links = new List<(string Name, string? Subject, string[] Ids, Picker Picker)>();
+        var merged = imports.SelectMany(d => d.GetProperty("teachers").EnumerateArray()).GroupBy(t => t.GetProperty("source").GetString()!).ToArray();
+        foreach (var group in merged)
         {
-            var name = person.GetProperty("source").GetString()!;
+            var person = group.First(); var name = group.Key;
             var options = person.GetProperty("candidates").EnumerateArray().Select(x => x.GetString()!).ToArray();
             if (options.Length <= 1) continue;
             var users = setup.GetProperty("teachers").EnumerateArray().Where(t => options.Contains(t.GetProperty("id").GetString())).ToArray();
-            var picker = new Picker { Title = name + " 계정 선택", ItemsSource = users.Select(u =>
-                $"{u.GetProperty("name").GetString()} · {u.GetProperty("department").GetString()} · {u.GetProperty("username").GetString()}").ToArray() };
-            links.Add((name, users.Select(u => u.GetProperty("id").GetString()!).ToArray(), picker));
-            ui.Body.Add(picker);
+            var labels = users.Select(u => $"{u.GetProperty("name").GetString()} · {u.GetProperty("department").GetString()} · {u.GetProperty("username").GetString()}").ToArray();
+            var ids = users.Select(u => u.GetProperty("id").GetString()!).ToArray();
+            if (links.Count == 0) { var head = Text("이름이 같은 선생님이 있어 과목마다 계정을 골라 주세요", 15, true); ui.Body.Add(head); var hint = Text("고른 내용은 기억해 두었다가 다음에 시간표를 올릴 때 미리 채웁니다.", 12); hint.TextColor = Muted; ui.Body.Add(hint); }
+            var subjects = group.SelectMany(t => t.TryGetProperty("subjects", out var list) && list.ValueKind == System.Text.Json.JsonValueKind.Array ? list.EnumerateArray() : Enumerable.Empty<System.Text.Json.JsonElement>())
+                .GroupBy(x => x.GetProperty("subject").GetString() ?? "").Select(g => (Subject: g.Key, Linked: g.Select(x => x.TryGetProperty("linked", out var l) && l.ValueKind == System.Text.Json.JsonValueKind.String ? l.GetString() : null).FirstOrDefault(l => l is not null))).ToArray();
+            void Choice(string? subject, string? linked)
+            {
+                var picker = new Picker { ClassId = "school-field", Title = name + (subject is null ? "" : " · " + subject) + " 계정 선택", ItemsSource = labels, SelectedIndex = linked is null ? -1 : Array.IndexOf(ids, linked), AutomationId = "mac-upload-link" };
+                var row = new Grid { ColumnDefinitions = { new(new GridLength(200)), new(GridLength.Star) }, ColumnSpacing = 10 };
+                var label = Text(name + (subject is null ? "" : " · " + subject), 13, true); label.VerticalOptions = LayoutOptions.Center; row.Add(label); row.Add(DesktopPanel(picker, 4), 1);
+                links.Add((name, subject, ids, picker)); ui.Body.Add(row);
+            }
+            if (subjects.Length == 0) Choice(null, null); else foreach (var (subject, linked) in subjects) Choice(subject, linked);
         }
         var preview = new VerticalStackLayout { Spacing = 4 };
         string? candidate = null, clientId = null;
@@ -155,8 +178,8 @@ public sealed partial class MessengerPage
         {
             candidate = null;
             preview.Children.Clear();
-            if (links.Any(p => p.Picker.SelectedIndex < 0)) throw new InvalidOperationException("동명이인의 계정을 선택하세요.");
-            var teachers = links.Select(p => new TimetableLink(p.Name, p.Ids[p.Picker.SelectedIndex])).ToArray();
+            if (links.Any(p => p.Picker.SelectedIndex < 0)) throw new InvalidOperationException("이름이 같은 선생님의 계정을 과목마다 고르세요.");
+            var teachers = links.Select(p => new TimetableLink(p.Name, p.Ids[p.Picker.SelectedIndex], p.Subject)).ToArray();
             var result = await source.Send("api/timetable/preview", new TimetablePreviewRequest(draftIds[0], "", "", [], teachers, draftIds));
             if (!MacScheduleActive(source)) return;
             candidate = result.GetProperty("candidateId").GetString();
@@ -177,6 +200,42 @@ public sealed partial class MessengerPage
             await reload();
             await Navigation.PopAsync();
         });
+        if (MacScheduleActive(source)) await Navigation.PushAsync(ui.Page);
+    }
+
+    // 게시 이력: every published timetable, newest first; one without approved swaps can be withdrawn.
+    async Task MacScheduleHistory(MessengerApi source)
+    {
+        var ui = MacSchedulePage(source, "게시 이력");
+        var rows = new VerticalStackLayout { Spacing = 8 }; ui.Body.Add(rows);
+        async Task Reload()
+        {
+            var history = (await source.Get("api/timetable/history")).EnumerateArray().ToArray(); if (!MacScheduleActive(source)) return;
+            rows.Children.Clear();
+            if (history.Length == 0) rows.Add(DesktopEmptyState("게시한 시간표가 없습니다", "시간표를 올려 게시하면 여기에 기록이 남습니다."));
+            foreach (var r in history)
+            {
+                var withdrawn = r.GetProperty("withdrawn").GetBoolean(); var swaps = r.TryGetProperty("approvedSwapCount", out var approvals) ? approvals.GetInt32() : 0;
+                var line = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) }, ColumnSpacing = 8 };
+                var words = new VerticalStackLayout { Spacing = 2 };
+                var name = Text($"#{r.GetProperty("revision")} · {r.GetProperty("fileName").GetString()}", 13, true); name.MaxLines = 1; name.LineBreakMode = LineBreakMode.TailTruncation; words.Add(name);
+                var when = Text($"{r.GetProperty("start").GetString()} ~ {r.GetProperty("end").GetString()}" + (swaps > 0 ? $" · 교체 신청 {swaps}건 승인·게시" : ""), 12); when.TextColor = Muted; words.Add(when);
+                line.Add(words);
+                if (withdrawn) { var gone = Text("취소됨", 12, true); gone.TextColor = Warning; gone.VerticalOptions = LayoutOptions.Center; line.Add(gone, 1); }
+                else if (swaps == 0)
+                {
+                    var id = r.GetProperty("id").GetString()!;
+                    var cancel = DesktopButton("게시 취소", async () =>
+                    {
+                        if (!await DisplayAlertAsync("시간표 취소", "일자별 표 취소 시 기초시간표로 돌아갑니다. 취소할까요?", "게시 취소", "닫기") || !MacScheduleActive(source)) return;
+                        await source.Send("api/timetable/" + id + "/cancel", new TimetableCommit("", MacScheduleId())); await Reload();
+                    });
+                    cancel.TextColor = Danger; cancel.FontSize = 14; cancel.MinimumHeightRequest = 32; line.Add(cancel, 1);
+                }
+                rows.Add(DesktopPanel(line, 12));
+            }
+        }
+        await Reload();
         if (MacScheduleActive(source)) await Navigation.PushAsync(ui.Page);
     }
 

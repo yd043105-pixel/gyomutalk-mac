@@ -52,7 +52,7 @@ public sealed partial class MessengerPage
         // Windows: a 72px rail on the soft canvas, icon over a short label, the current item as an accent pill.
         var rail=new Grid{Padding=new Thickness(0,14,0,12),RowDefinitions={new(GridLength.Auto),new(GridLength.Star),new(GridLength.Auto)},BackgroundColor=Canvas};
         rail.Add(new Image{Source="brand_mark.png",WidthRequest=36,HeightRequest=36,Margin=new Thickness(0,0,0,14),HorizontalOptions=LayoutOptions.Center});
-        Button Link(string key,string label,string tip,string icon,Func<Task> action)
+        View Link(string key,string label,string tip,string icon,Func<Task> action)
         {
             var button=DesktopButton(label,async()=>
             {
@@ -65,18 +65,27 @@ public sealed partial class MessengerPage
             button.FontSize=12;button.BorderWidth=0;button.CornerRadius=(int)Radius;button.Padding=new Thickness(0,6);button.Margin=new Thickness(10,1);button.HeightRequest=62;button.MinimumHeightRequest=0;
             button.BackgroundColor=Colors.Transparent;button.TextColor=Muted;
             ToolTipProperties.SetText(button,tip);SemanticProperties.SetDescription(button,tip);
-            desktopMenu[key]=button;return button;
+            desktopMenu[key]=button;
+            // The red count over the icon, as on the Windows rail.
+            var count=new Label{FontSize=10,FontAttributes=FontAttributes.Bold,TextColor=Colors.White,HorizontalTextAlignment=TextAlignment.Center,VerticalTextAlignment=TextAlignment.Center};
+            var badge=new Border{Content=count,BackgroundColor=Danger,StrokeThickness=0,StrokeShape=new RoundRectangle{CornerRadius=9},MinimumWidthRequest=18,HeightRequest=18,Padding=new Thickness(5,0),
+                HorizontalOptions=LayoutOptions.End,VerticalOptions=LayoutOptions.Start,Margin=new Thickness(0,4,18,0),InputTransparent=true,IsVisible=false,AutomationId="mac-badge-"+key};
+            desktopBadges[key]=(badge,count);
+            return new Grid{Children={button,badge}};
         }
         var links=new VerticalStackLayout{Spacing=2};
+        links.Add(Link("people","조직도","조직도 · 교직원","rail_tree",()=>MacPeople()));
         links.Add(Link("received","받은함","받은 메시지","rail_mail",async()=>{homeTab="notices";view="received";offset=0;await Home();}));
         links.Add(Link("sent","보낸함","보낸 메시지","rail_send",async()=>{homeTab="notices";view="sent";offset=0;await Home();}));
         links.Add(Link("compose","새 메시지","새 메시지 쓰기","rail_add",()=>MacCompose()));
-        links.Add(Link("people","조직도","조직도 · 교직원","rail_tree",MacPeople));
+        links.Add(Link("chat","채팅","채팅","rail_chat",()=>MacChat()));
         links.Add(Link("work","할 일","할 일 · 파일 제출","rail_file",()=>MacWork()));
+        links.Add(Link("survey","설문","설문","rail_survey",()=>MacSurveys()));
         links.Add(Link("timetable","시간표","시간표","rail_timetable",async()=>{await Timetable();}));SetDesktopTimetable(false);
         links.Add(Link("calendar","일정","학교 일정","rail_calendar",()=>OfficeSchedule(false)));
         links.Add(Link("rooms","특별실","특별실 예약","rail_room",()=>OfficeSchedule(true)));
-        rail.Add(links,0,1);
+        links.Add(Link("courses","수강신청","수강신청 · 교육과정 담당","rail_course",()=>MacCourses()));ShowRail("courses",false);
+        rail.Add(new ScrollView{Content=links,VerticalScrollBarVisibility=ScrollBarVisibility.Never},0,1);
         var away=DesktopButton("자리비움",async()=>{if(desktopHub?.State!=HubConnectionState.Connected)throw new InvalidOperationException("연결을 확인하세요.");desktopAway=await desktopHub.InvokeAsync<bool>("SetAway",!desktopAway);desktopStatus.Text=desktopAway?"자리비움":"온라인";});
         away.AutomationId="mac-away";away.FontSize=12;away.BorderWidth=0;away.BackgroundColor=Colors.Transparent;away.TextColor=Muted;away.Padding=new Thickness(2,4);away.Margin=new Thickness(10,0);away.MinimumHeightRequest=0;away.HeightRequest=34;
         var bottom=new VerticalStackLayout{Spacing=2};bottom.Add(away);
@@ -85,8 +94,34 @@ public sealed partial class MessengerPage
         desktopStatus.PropertyChanged+=(_,e)=>{if(e.PropertyName!=nameof(Label.Text))return;away.Text=desktopAway?"자리 복귀":"자리비움";ShowDesktopIdentity();};
         var grid=new Grid{ColumnDefinitions={new(new GridLength(RailWidth)),new(GridLength.Star)},RowDefinitions={new(GridLength.Star),new(GridLength.Auto)},ColumnSpacing=1,BackgroundColor=Line};grid.Add(rail);Grid.SetRowSpan(rail,2);grid.Add(desktopContent,1);
         feedback.Margin=0;feedback.Padding=new Thickness(24,8);feedback.BackgroundColor=Surface;grid.Add(feedback,1,1);Content=grid;
-        // Keep the desktop navigation in view at short window heights as well.
-        rail.SizeChanged+=(_,_)=>{var compact=rail.Height>0&&rail.Height<720;if(compact==desktopRailCompact)return;desktopRailCompact=compact;foreach(var item in desktopMenu.Values)item.HeightRequest=compact?38:62;SelectRail(desktopRailSelected);};
+        // Keep the desktop navigation in view at short window heights as well: the items shrink to fit, and lose their
+        // icons only when even that is not enough. Items the school switched off take no room.
+        void Fit()
+        {
+            if(rail.Height<=0)return;var shown=desktopMenu.Values.Count(b=>b.IsVisible);
+            var room=(rail.Height-190)/Math.Max(1,shown)-4;var height=Math.Clamp(Math.Floor(room),38,62);var compact=height<52;
+            if(compact==desktopRailCompact&&desktopMenu.Values.All(b=>b.HeightRequest==height))return;
+            desktopRailCompact=compact;foreach(var item in desktopMenu.Values)item.HeightRequest=height;SelectRail(desktopRailSelected);
+        }
+        rail.SizeChanged+=(_,_)=>Fit();railFit=Fit;
+    }
+    Action? railFit;
+    readonly Dictionary<string,(Border Badge,Label Count)> desktopBadges=[];
+    void ShowRail(string key,bool on)
+    {
+        if(!desktopMenu.TryGetValue(key,out var button)||button.IsVisible==on)return;
+        button.IsVisible=on;if(button.Parent is View host)host.IsVisible=on;railFit?.Invoke();
+    }
+    void ShowMacBadges()
+    {
+        void Set(string key,int count)
+        {
+            if(!desktopBadges.TryGetValue(key,out var badge))return;
+            badge.Badge.IsVisible=count>0;badge.Count.Text=count>99?"99+":count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            SemanticProperties.SetDescription(badge.Badge,"안 읽은 "+count+"개");
+        }
+        Set("received",macUnreadMail);Set("chat",macUnreadChat);
+        MacNotifications.Badge(macUnreadMail+macUnreadChat);
     }
     void SelectRail(string? key)
     {
@@ -126,13 +161,21 @@ public sealed partial class MessengerPage
         Restyle(typeof(ActivityIndicator),(ActivityIndicator.ColorProperty,Blue));
         Restyle(typeof(Page),(VisualElement.BackgroundColorProperty,Canvas));
     }
-    void SetDesktopTimetable(bool enabled)
+    void SetDesktopTimetable(bool enabled)=>ShowRail("timetable",enabled);
+    // Every workspace page goes in through here, so live updates follow only the page on screen.
+    void MacShowPane(string key,View content)
     {
-        if(desktopMenu.TryGetValue("timetable",out var button))button.IsVisible=enabled;
+        macPane=key;
+        if(key!="chat"){macChatChanged=null;macReadingRoom=null;}
+        if(key!="survey")macSurveyChanged=null;
+        desktopContent.Content=content;
     }
     async Task DesktopMailbox(string query="")
     {
-        var source=api!;var version=epoch;var rows=await source.Get("api/messages?box="+view+"&offset="+offset+"&q="+Uri.EscapeDataString(query));if(!Current(source,version))return;
+        var source=api!;var version=epoch;
+        if(view=="conversation"&&macConversationWith is null)view="received";
+        var person=view=="conversation"?"&person="+Uri.EscapeDataString(macConversationWith!):"";
+        var rows=await source.Get("api/messages?box="+view+"&offset="+offset+"&q="+Uri.EscapeDataString(query)+person);if(!Current(source,version))return;
         _=SynchronizeDesktopArchive(source);
         var found=rows.EnumerateArray().ToList();if(offset==0&&query.Trim().Length>0)found.AddRange(LocalMatches(source,query.Trim()).Where(m=>found.All(r=>r.GetProperty("id").GetString()!=m.GetProperty("id").GetString())));
         var root=new Grid{RowDefinitions={new(GridLength.Auto),new(GridLength.Star)},BackgroundColor=Surface};
@@ -146,7 +189,9 @@ public sealed partial class MessengerPage
         if(desktopStatus.Parent is Grid oldToolbar)oldToolbar.Remove(desktopStatus);toolbar.Add(desktopStatus,2);
         var compose=DesktopButton("새 메시지",()=>MacCompose(),true);compose.VerticalOptions=LayoutOptions.Center;toolbar.Add(compose,3);header.Add(toolbar);
         var tabs=new HorizontalStackLayout{Spacing=6,Margin=new Thickness(-6,8,0,0)};
-        foreach(var (key,label) in new[]{("received","받은 메시지"),("unread","미확인"),("sent","보낸 메시지")})
+        var boxes=new List<(string,string)>{("received","받은 메시지"),("unread","미확인"),("sent","보낸 메시지")};
+        if(view=="conversation")boxes.Add(("conversation","주고받은 메시지 · "+macConversationName));
+        foreach(var (key,label) in boxes)
         {
             var selected=view==key;
             var tab=DesktopButton(label,async()=>{view=key;offset=0;await DesktopMailbox(search.Text??"");});
@@ -172,7 +217,7 @@ public sealed partial class MessengerPage
         foreach(var message in found)
         {
             var id=message.GetProperty("id").GetString()!;var label=DesktopTitle(source,message);
-            var sender=message.GetProperty("senderName").GetString()??"";var unreadRow=message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent";
+            var sender=message.GetProperty("senderName").GetString()??"";var unreadRow=message.GetProperty("readAt").ValueKind==JsonValueKind.Null&&view!="sent"&&Field(message,"senderId")!=source.Session.GetProperty("user").GetProperty("id").GetString();
             // Windows row: initial avatar, sender and date, an unread dot before the title, then one line of preview.
             var line=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Star)},ColumnSpacing=12};
             var avatar=Avatar(sender,44,Field(message,"senderId")??sender);avatar.VerticalOptions=LayoutOptions.Start;avatar.Margin=new Thickness(0,2,0,0);line.Add(avatar);
@@ -198,7 +243,7 @@ public sealed partial class MessengerPage
             panes.Children.Clear();panes.ColumnDefinitions.Clear();
             panes.RowDefinitions.Add(new RowDefinition(GridLength.Auto));panes.RowDefinitions.Add(new RowDefinition(GridLength.Star));
             list.RowDefinitions[1].Height=new GridLength(0);panes.Add(list);
-            var title=!string.IsNullOrWhiteSpace(query)?"검색 결과가 없습니다":view switch{"sent"=>"보낸 메시지가 없습니다","unread"=>"미확인 메시지가 없습니다",_=>"받은 메시지가 없습니다"};
+            var title=!string.IsNullOrWhiteSpace(query)?"검색 결과가 없습니다":view switch{"sent"=>"보낸 메시지가 없습니다","unread"=>"미확인 메시지가 없습니다","conversation"=>"주고받은 메시지가 없습니다",_=>"받은 메시지가 없습니다"};
             var blank=DesktopEmptyState(title,!string.IsNullOrWhiteSpace(query)?"검색어를 바꿔 보세요.":"메시지가 생기면 여기에서 확인할 수 있습니다.");
             blank.Margin=24;blank.VerticalOptions=LayoutOptions.Center;desktopReader.Content=blank;panes.Add(desktopReader,0,1);
         }
@@ -206,10 +251,13 @@ public sealed partial class MessengerPage
         {
             list.Add(new ScrollView{Content=messages},0,1);panes.Add(list);
         }
-        var more=DesktopButton(rows.GetArrayLength()==100?"이전 메시지 더 보기":"새로고침",async()=>{if(rows.GetArrayLength()==100)offset+=100;await DesktopMailbox(search.Text??"");});SubtleButton(more);list.Add(more,0,2);desktopContent.Content=root;
+        var more=DesktopButton(rows.GetArrayLength()==100?"이전 메시지 더 보기":"새로고침",async()=>{if(rows.GetArrayLength()==100)offset+=100;await DesktopMailbox(search.Text??"");});SubtleButton(more);list.Add(more,0,2);MacShowPane("mail",root);
+        _=MacQuietly(()=>MacCountUnread(source));
         SelectRail(view=="unread"?"received":view);
         if(opens.Count>0)await opens[0]();
     }
+    // 주고받은 메시지: everything this teacher and one colleague sent each other, opened from the org chart.
+    string? macConversationWith;string macConversationName="";
     // The server drops a body once every PC saved it, so untitled messages and search fall back to this Mac's copies.
     string DesktopTitle(MessengerApi source,JsonElement row)
     {
@@ -228,7 +276,8 @@ public sealed partial class MessengerPage
         foreach(var copy in desktopArchive.Search(query))
         {
             var message=copy.GetProperty("message");var mine=copy.GetProperty("recipients").EnumerateArray().Where(r=>r.GetProperty("id").GetString()==me).Select(r=>(JsonElement?)r).FirstOrDefault();
-            var fits=view switch{"sent"=>message.GetProperty("senderId").GetString()==me,"unread"=>mine?.GetProperty("readAt").ValueKind==JsonValueKind.Null,_=>mine is not null};
+            var fits=view switch{"sent"=>message.GetProperty("senderId").GetString()==me,"unread"=>mine?.GetProperty("readAt").ValueKind==JsonValueKind.Null,
+                "conversation"=>message.GetProperty("senderId").GetString()==macConversationWith||copy.GetProperty("recipients").EnumerateArray().Any(r=>r.GetProperty("id").GetString()==macConversationWith),_=>mine is not null};
             if(!fits)continue;
             var row=new JsonObject{["id"]=message.GetProperty("id").GetString(),["title"]=message.GetProperty("title").GetString(),["preview"]=SchoolMessenger.Shared.MessageText.Excerpt(message.GetProperty("body").GetString()),["createdAt"]=message.GetProperty("createdAt").GetInt64(),["senderName"]=message.GetProperty("senderName").GetString(),["readAt"]=mine?.GetProperty("readAt").ValueKind==JsonValueKind.Number?mine.Value.GetProperty("readAt").GetInt64():null};
             using var document=JsonDocument.Parse(row.ToJsonString());yield return document.RootElement.Clone();
