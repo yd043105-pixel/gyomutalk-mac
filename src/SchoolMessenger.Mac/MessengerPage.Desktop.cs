@@ -328,7 +328,7 @@ public sealed partial class MessengerPage
         });targets.Add(add,2);
         var self=new CheckBox{Color=Blue,VerticalOptions=LayoutOptions.Center,IsChecked=recipients.Contains(me),AutomationId="mac-compose-self"};
         self.CheckedChanged+=(_,e)=>{if(e.Value)Pick(me);else recipients.Remove(me);ShowRecipients();};
-        targets.Add(new HorizontalStackLayout{Spacing=2,VerticalOptions=LayoutOptions.Center,Children={self,Text("나에게도 보내기",13)}},1);
+        targets.Add(new HorizontalStackLayout{Spacing=2,VerticalOptions=LayoutOptions.Center,Children={self,Mid(Text("나에게도 보내기",13))}},1);
         var title=new Entry{ClassId="school-field",Placeholder="제목 · 비워 두면 본문 앞부분이 표시됩니다",MaxLength=200,FontSize=16,TextColor=Navy,PlaceholderColor=Muted,BackgroundColor=Colors.Transparent,AutomationId="mac-compose-title"};fields.Add(DesktopPanel(title,10),0,2);
         var text=new Editor{Placeholder="메시지 내용을 입력하세요",MaxLength=10000,FontSize=18,TextColor=Navy,PlaceholderColor=Muted,BackgroundColor=Colors.Transparent,VerticalOptions=LayoutOptions.Fill,AutomationId="mac-compose-body"};fields.Add(DesktopPanel(text,12),0,3);
         var files=new List<(string Id,string Path,long Size,Label Label,string Name)>();var names=new VerticalStackLayout{Spacing=4};var fileHint=Text("",11);fileHint.TextColor=Muted;names.Add(fileHint);
@@ -419,7 +419,7 @@ public sealed partial class MessengerPage
         var caption=Text("파일 제출 요청 · 마감일",12);caption.TextColor=Muted;caption.VerticalOptions=LayoutOptions.Center;
         var collect=new CheckBox{AutomationId="mac-collect",Color=Blue,VerticalOptions=LayoutOptions.Center};var collectDate=new DatePicker{ClassId="school-field",Format="yyyy.MM.dd",Date=DateTime.UtcNow.AddHours(9).Date.AddDays(7),IsEnabled=false,VerticalOptions=LayoutOptions.Center};collect.CheckedChanged+=(_,e)=>collectDate.IsEnabled=e.Value&&pending is null;
         // Collected files are handed in through the task list, so the option goes with that menu.
-        if(MacFeature("tasks"))options.Add(new HorizontalStackLayout{Spacing=6,Children={collect,caption,collectDate}});
+        if(MacFeature("tasks"))options.Add(new HorizontalStackLayout{Spacing=6,Children={collect,Mid(caption),collectDate}});
         var schedule=new CheckBox{AutomationId="mac-schedule",Color=Blue,VerticalOptions=LayoutOptions.Center};var scheduleCaption=Text("예약 전송",12);scheduleCaption.TextColor=Muted;scheduleCaption.VerticalOptions=LayoutOptions.Center;
         var scheduleDate=new DatePicker{ClassId="school-field",Format="yyyy.MM.dd",Date=DateTime.UtcNow.AddHours(9).Date.AddDays(1),IsEnabled=false,VerticalOptions=LayoutOptions.Center};
         var scheduleTime=new TimePicker{ClassId="school-field",Format="HH:mm",Time=new TimeSpan(9,0,0),IsEnabled=false,VerticalOptions=LayoutOptions.Center};

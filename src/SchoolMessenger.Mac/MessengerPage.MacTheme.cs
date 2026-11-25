@@ -64,6 +64,8 @@ public sealed partial class MessengerPage
         button.FontSize=14;button.FontAttributes=FontAttributes.Bold;button.CornerRadius=17;button.Padding=new Thickness(14,4);button.MinimumHeightRequest=34;button.HeightRequest=34;button.BorderWidth=1;
         button.BackgroundColor=selected?Blue:Surface;button.BorderColor=selected?Blue:Line;button.TextColor=selected?Colors.White:Muted;
     }
+    // A label beside a check circle sits on the circle's middle line; by default it would ride at the top.
+    static Label Mid(Label label){label.VerticalOptions=LayoutOptions.Center;return label;}
     // A 1pt rule between stacked regions (header, list, footer).
     static BoxView Rule()=>new(){HeightRequest=1,Color=Line,VerticalOptions=LayoutOptions.Start,InputTransparent=true};
 }

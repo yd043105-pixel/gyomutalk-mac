@@ -166,6 +166,8 @@ public sealed partial class MessengerPage
     void MacShowPane(string key,View content)
     {
         macPane=key;
+        // A note from the page before does not stay under the new one.
+        feedback.Text="";
         if(key!="chat"){macChatChanged=null;macReadingRoom=null;}
         if(key!="survey")macSurveyChanged=null;
         desktopContent.Content=content;

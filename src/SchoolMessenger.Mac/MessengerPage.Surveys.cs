@@ -157,10 +157,10 @@ public sealed partial class MessengerPage
             everyone.CheckedChanged+=(_,_)=>{pick.IsEnabled=!everyone.IsChecked;Who();};
             var targetRow=new Grid{ColumnDefinitions={new(GridLength.Auto),new(GridLength.Star)},ColumnSpacing=10};targetRow.Add(pick);targetRow.Add(who,1);
             stack.Add(Text("대상",12,true));
-            if(broadcast){var all=new HorizontalStackLayout{Spacing=4,Children={everyone,Text("전체 교직원",13)}};stack.Add(all);}
+            if(broadcast){var all=new HorizontalStackLayout{Spacing=4,Children={everyone,Mid(Text("전체 교직원",13))}};stack.Add(all);}
             stack.Add(targetRow);Who();
             var anonymous=new CheckBox{Color=Blue,VerticalOptions=LayoutOptions.Center,AutomationId="mac-survey-anonymous"};
-            stack.Add(new HorizontalStackLayout{Spacing=4,Children={anonymous,Text("익명 설문",13,true)}});
+            stack.Add(new HorizontalStackLayout{Spacing=4,Children={anonymous,Mid(Text("익명 설문",13,true))}});
             var anonymousNote=Text("응답은 게시자 PC로 옮겨진 뒤 서버에서 지워지고, 누가 어떤 답을 했는지 게시자도 서버 관리자도 알 수 없습니다. 제출한 답은 고칠 수 없고, 게시한 뒤에는 이 설정을 바꿀 수 없습니다. 결과는 게시한 PC에서만 볼 수 있습니다. 응답자가 적으면 답변 내용으로 누구인지 짐작될 수 있습니다.",11);
             anonymousNote.TextColor=Muted;stack.Add(anonymousNote);
             stack.Add(Text("문항",12,true));
@@ -175,7 +175,7 @@ public sealed partial class MessengerPage
                 var text=new Entry{ClassId="school-field",Placeholder="질문 내용",MaxLength=500,FontSize=15,AutomationId="mac-survey-question"};panel.Add(DesktopPanel(text,6));
                 var kind=new Picker{ClassId="school-field",ItemsSource=new[]{"객관식","주관식"},SelectedIndex=0,WidthRequest=130};
                 var required=new CheckBox{IsChecked=true,Color=Blue,VerticalOptions=LayoutOptions.Center};
-                panel.Add(new HorizontalStackLayout{Spacing=10,Children={DesktopPanel(kind,4),required,Text("필수 응답",13)}});
+                panel.Add(new HorizontalStackLayout{Spacing=10,Children={DesktopPanel(kind,4),required,Mid(Text("필수 응답",13))}});
                 var hint=Text("선택지 · 한 줄에 하나씩",11);hint.TextColor=Muted;panel.Add(hint);
                 var options=new Editor{Text="찬성\n반대",HeightRequest=70,MaxLength=4200,FontSize=14,BackgroundColor=Colors.Transparent,AutoSize=EditorAutoSizeOption.Disabled};var optionsBox=DesktopPanel(options,6);panel.Add(optionsBox);
                 kind.SelectedIndexChanged+=(_,_)=>hint.IsVisible=optionsBox.IsVisible=kind.SelectedIndex==0;

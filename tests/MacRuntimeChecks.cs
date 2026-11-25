@@ -326,7 +326,7 @@ internal static class MacRuntimeChecks
             Check(Views(compact).OfType<Border>().Any(b=>b.AutomationId=="mac-roster-row-compact")&&Views(compact).OfType<Button>().Any(b=>b.AutomationId=="mac-roster-favorites"),"Mac org chart has the compact view and the favourites filter");
             await Capture("mac-roster-compact.png");MessengerPage.MacVerifyCompact=false;await Page.Navigation.PopAsync();
             // Typing a recipient's name lists them; Enter adds the chip. Leaving keeps a draft.
-            await Page.MacVerifyCompose();var writing=(ContentPage)Page.Navigation.NavigationStack.Last();var typed=Views(writing.Content).OfType<Entry>().Single(e=>e.AutomationId=="mac-recipient-input");
+            await Page.MacVerifyCompose();var writing=(ContentPage)Page.Navigation.NavigationStack.Last();if(!Views(writing.Content).OfType<Entry>().Any(e=>e.AutomationId=="mac-recipient-input"))throw new InvalidOperationException("composer not on top: "+string.Join(" > ",Page.Navigation.NavigationStack.Select(p=>p.Title))+" / entries "+string.Join(",",Views(writing.Content).OfType<Entry>().Select(e=>e.AutomationId)));var typed=Views(writing.Content).OfType<Entry>().Single(e=>e.AutomationId=="mac-recipient-input");
             typed.Text="가상교사0";
             await Wait(()=>Views(writing.Content).OfType<Border>().Any(b=>b.AutomationId=="mac-recipient-suggestions"&&b.IsVisible));
             await Capture("mac-compose-recipient.png");

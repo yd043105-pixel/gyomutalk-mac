@@ -180,7 +180,7 @@ public sealed partial class MessengerPage
             var periods = Enumerable.Range(1, 7).Select(n => new CheckBox { Color = Blue, VerticalOptions = LayoutOptions.Center, AutomationId = "mac-helper-period-" + n }).ToArray();
             var row = new FlexLayout { Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap, AlignItems = Microsoft.Maui.Layouts.FlexAlignItems.Center };
             row.Add(new Border { Content = date, Margin = new Thickness(0, 0, 12, 0), StrokeThickness = 0 });
-            for (var i = 0; i < periods.Length; i++) row.Add(new HorizontalStackLayout { Spacing = 2, Margin = new Thickness(0, 0, 10, 0), Children = { periods[i], Text((i + 1) + "교시", 13) } });
+            for (var i = 0; i < periods.Length; i++) row.Add(new HorizontalStackLayout { Spacing = 2, Margin = new Thickness(0, 0, 10, 0), Children = { periods[i], Mid(Text((i + 1) + "교시", 13)) } });
             form.Add(row);
             var wish = new Editor { Placeholder = "예: 오후 수업과는 바꾸지 말아 주세요. 3학년 수업은 피해 주세요.", MaxLength = 300, HeightRequest = 64, FontSize = 14, BackgroundColor = Colors.Transparent, AutoSize = EditorAutoSizeOption.Disabled };
             if (MacFeature("ai"))
@@ -189,7 +189,7 @@ public sealed partial class MessengerPage
                 var aiNote = Text("적으면 AI가 찾은 교체안 중 맞는 순서를 고릅니다. 요청 글과 요일·교시·학급·과목만 보내고 선생님 이름은 기호로 바꿉니다.", 11); aiNote.TextColor = Faint; form.Add(aiNote);
             }
             var mark = new CheckBox { IsChecked = true, Color = Blue, VerticalOptions = LayoutOptions.Center };
-            form.Add(new HorizontalStackLayout { Spacing = 4, Children = { mark, Text("비운 시간을 내 ‘수업 불가’ 시간으로 함께 표시", 13) } });
+            form.Add(new HorizontalStackLayout { Spacing = 4, Children = { mark, Mid(Text("비운 시간을 내 ‘수업 불가’ 시간으로 함께 표시", 13)) } });
             var find = DesktopButton("교체안 찾기", null, true); find.AutomationId = "mac-helper-find"; find.HorizontalOptions = LayoutOptions.End; form.Add(find);
             stack.Add(DesktopPanel(form, 16));
             var note = Text("", 12); note.TextColor = Muted; note.AutomationId = "mac-helper-note"; stack.Add(note);
