@@ -158,16 +158,16 @@ public sealed partial class MessengerPage
             if (options.Length <= 1) continue;
             var users = setup.GetProperty("teachers").EnumerateArray().Where(t => options.Contains(t.GetProperty("id").GetString())).ToArray();
             var labels = users.Select(u => $"{u.GetProperty("name").GetString()} · {u.GetProperty("department").GetString()} · {u.GetProperty("username").GetString()}").ToArray();
-            var ids = users.Select(u => u.GetProperty("id").GetString()!).ToArray();
+            var accountIds = users.Select(u => u.GetProperty("id").GetString()!).ToArray();
             if (links.Count == 0) { var head = Text("이름이 같은 선생님이 있어 과목마다 계정을 골라 주세요", 15, true); ui.Body.Add(head); var hint = Text("고른 내용은 기억해 두었다가 다음에 시간표를 올릴 때 미리 채웁니다.", 12); hint.TextColor = Muted; ui.Body.Add(hint); }
             var subjects = group.SelectMany(t => t.TryGetProperty("subjects", out var list) && list.ValueKind == System.Text.Json.JsonValueKind.Array ? list.EnumerateArray() : Enumerable.Empty<System.Text.Json.JsonElement>())
                 .GroupBy(x => x.GetProperty("subject").GetString() ?? "").Select(g => (Subject: g.Key, Linked: g.Select(x => x.TryGetProperty("linked", out var l) && l.ValueKind == System.Text.Json.JsonValueKind.String ? l.GetString() : null).FirstOrDefault(l => l is not null))).ToArray();
             void Choice(string? subject, string? linked)
             {
-                var picker = new Picker { ClassId = "school-field", Title = name + (subject is null ? "" : " · " + subject) + " 계정 선택", ItemsSource = labels, SelectedIndex = linked is null ? -1 : Array.IndexOf(ids, linked), AutomationId = "mac-upload-link" };
+                var picker = new Picker { ClassId = "school-field", Title = name + (subject is null ? "" : " · " + subject) + " 계정 선택", ItemsSource = labels, SelectedIndex = linked is null ? -1 : Array.IndexOf(accountIds, linked), AutomationId = "mac-upload-link" };
                 var row = new Grid { ColumnDefinitions = { new(new GridLength(200)), new(GridLength.Star) }, ColumnSpacing = 10 };
                 var label = Text(name + (subject is null ? "" : " · " + subject), 13, true); label.VerticalOptions = LayoutOptions.Center; row.Add(label); row.Add(DesktopPanel(picker, 4), 1);
-                links.Add((name, subject, ids, picker)); ui.Body.Add(row);
+                links.Add((name, subject, accountIds, picker)); ui.Body.Add(row);
             }
             if (subjects.Length == 0) Choice(null, null); else foreach (var (subject, linked) in subjects) Choice(subject, linked);
         }

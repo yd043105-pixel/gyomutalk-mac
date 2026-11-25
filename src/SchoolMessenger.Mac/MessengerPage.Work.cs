@@ -101,8 +101,8 @@ public sealed partial class MessengerPage
             if(item is{} idea&&Field(idea,"status")=="suggested")
             {
                 var chosen=statuses[Math.Max(0,picker.SelectedIndex)];
-                var day=dated.IsChecked&&date.Date is{} picked?picked.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture):null;
-                if(chosen!="dismissed")await MacSend(source,"api/todos",new JsonObject{["title"]=title.Text??"",["dueDate"]=day,["dueTime"]=day==Field(idea,"dueDate")?TodoTime(idea):null,["status"]="open",["revision"]=0,["sourceId"]=Field(idea,"sourceId")});
+                var dueDay=dated.IsChecked&&date.Date is{} picked?picked.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture):null;
+                if(chosen!="dismissed")await MacSend(source,"api/todos",new JsonObject{["title"]=title.Text??"",["dueDate"]=dueDay,["dueTime"]=dueDay==Field(idea,"dueDate")?TodoTime(idea):null,["status"]="open",["revision"]=0,["sourceId"]=Field(idea,"sourceId")});
                 if(desktopArchive?.Owner==source&&Field(idea,"sourceId") is{} message&&Field(idea,"id") is{} suggestion)desktopArchive.Decide(message,suggestion);
                 await MacWork("todos");feedback.Text=chosen=="dismissed"?"추천을 제외했습니다.":"할 일로 등록했습니다.";return;
             }
