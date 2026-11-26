@@ -191,7 +191,8 @@ internal static class MacRuntimeChecks
             Check(Views(boardPage.Content).OfType<Button>().Any(button=>button.AutomationId=="mac-board-submit"&&!button.IsEnabled),"The request button waits until a lesson has been moved");
             await Capture("mac-swap-board.png");
             var carried=await Page.macVerifyCarry!();
-            Check(carried.Chip&&carried.Options>0,"Mac swap board carries a picked lesson to the next week and lights that week's lessons it can trade with");
+            if(!(carried.Chip&&carried.Options>0))throw new InvalidOperationException($"Carried lesson: chip {carried.Chip}, {carried.Options} options, status: {carried.Status}");
+            Check(true,"Mac swap board carries a picked lesson to the next week and lights that week's lessons it can trade with");
             await Capture("mac-swap-board-next-week.png");
             await Page.Navigation.PopAsync();
             // A period marked as impossible shows on the board, and the helper answers for one of the teacher's periods.

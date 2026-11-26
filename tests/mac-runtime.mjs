@@ -32,7 +32,7 @@ try{
     if(!ready)await delay(250);
   }
   assert.ok(ready,'Fixture startup failed: '+logs);
-  // A school-sized week, as on Windows: 18 classes, 48 invented teachers, the administrator teaching one of them,
+  // A school-sized timetable for four weeks (so a lesson can be carried to next week), as on Windows: 18 classes, 48 invented teachers, the administrator teaching one of them,
   // and three bundles of two classes each so the swap board shows bundle colours.
   const db=new DatabaseSync(path.join(data,'school.db'));const id=()=>randomUUID().replaceAll('-','');let rooms;
   const subjects=['국어','수학','영어','통합사회','통합과학','체육','음악 감상과 비평','미술 창작'];
@@ -44,7 +44,7 @@ try{
     const cells=rooms.flatMap((room,c)=>Array.from({length:35},(_,i)=>{const t=(c+i*5)%48;return{classId:room.id,className:room.name,day:Math.floor(i/7)+1,period:i%7+1,subject:subjects[t%subjects.length],teacherId:t?'':owner,teacherName:t?'가상교사 '+String(t).padStart(2,'0'):ownerName};}));
     for(const room of rooms)db.prepare('INSERT INTO TimetableClasses VALUES(?,?,?)').run(room.id,room.name,room.grade);
     const batch=id(),client=id();
-    db.prepare('INSERT INTO TimetableBatches(Revision,Id,Owner,ClientId,Payload,Delivered) VALUES(1,?,?,?,?,1)').run(batch,owner,client,JSON.stringify({id:batch,revision:1,owner,clientId:client,kind:'base',year:monday.getUTCFullYear(),semester:2,start:date(0),end:date(6),date:null,fileName:'가상시간표.xlsx',publishedAt:Date.now(),withdrawn:false,cells}));
+    db.prepare('INSERT INTO TimetableBatches(Revision,Id,Owner,ClientId,Payload,Delivered) VALUES(1,?,?,?,?,1)').run(batch,owner,client,JSON.stringify({id:batch,revision:1,owner,clientId:client,kind:'base',year:monday.getUTCFullYear(),semester:2,start:date(0),end:date(27),date:null,fileName:'가상시간표.xlsx',publishedAt:Date.now(),withdrawn:false,cells}));
   }finally{db.close();}
   {
     const cookies=new Map();let csrf='';
