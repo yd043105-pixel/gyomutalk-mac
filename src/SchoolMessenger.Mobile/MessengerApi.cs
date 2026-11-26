@@ -261,4 +261,5 @@ internal record MobileEmpty;
 [JsonSerializable(typeof(TimetableSuggestionRequest))]
 [JsonSerializable(typeof(TimetableSuggestion[]))]
 [JsonSerializable(typeof(TimetableLink[]))]
+[JsonSerializable(typeof(TimetableFixedTime[]))]
 internal partial class MobileJson:JsonSerializerContext;

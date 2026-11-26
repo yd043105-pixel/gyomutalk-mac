@@ -121,6 +121,9 @@ public sealed partial class MessengerPage
             };
             ui.Body.Add(new HorizontalStackLayout { Spacing = 10, Children = { label, weeks } });
         }
+        // Weekly times (creative activities) that only the timetable manager trades. A server without them shows no button.
+        if (manager && setup.TryGetProperty("fixedTimes", out var fixedTimes) && fixedTimes.ValueKind == JsonValueKind.Array)
+            ui.Add("교체하지 않는 시간", () => MacFixedTimes(source, setup));
         if (manager)
         {
             // The board already checked every rule, so a request can be approved and published without a NEIS file.

@@ -29,6 +29,7 @@ public sealed partial class MessengerPage
     internal Task MacVerifySwapBoard()=>MacSwapBoard(api!,DateTime.UtcNow.AddHours(9).Date,true);
     internal Func<Task<(int Options,bool Chip,string Status)>>? macVerifyCarry;
     internal Task MacVerifyBundles()=>MacBundleEditor(api!);
+    internal async Task MacVerifyFixedTimes()=>await MacFixedTimes(api!,await api!.Get("api/timetable/setup"));
     internal Task MacVerifyCompose()=>MacCompose();
     internal Task MacVerifyPeople()=>MacPeople();
     internal Task MacVerifyDetail(string id)=>OfficeDetail(id);
@@ -228,6 +229,21 @@ internal static class MacRuntimeChecks
             Check(Views(bundlePage.Content).OfType<Picker>().Any(picker=>picker.AutomationId=="mac-bundle-grade"&&picker.SelectedIndex==0),"Mac bundle page lists the bundles with their colours and picks grade, subject and classes");
             await Capture("mac-bundles.png");
             await Page.Navigation.PopAsync();
+            // The timetable manager keeps a weekly time out of trades; the board shades it, and taking it away frees it.
+            await Page.MacVerifyFixedTimes();
+            var fixedPage=(ContentPage)Page.Navigation.NavigationStack.Last();
+            await Wait(()=>Views(fixedPage.Content).OfType<Button>().Any(b=>b.AutomationId=="mac-fixed-add"));
+            ((IButtonController)Views(fixedPage.Content).OfType<Button>().Single(b=>b.AutomationId=="mac-fixed-add")).SendClicked();
+            await Wait(()=>Views(fixedPage.Content).OfType<Label>().Any(l=>l.Text=="월요일 1교시 · 모든 학년"));
+            Check(true,"Mac timetable manager adds a weekly time kept out of trades");
+            await Capture("mac-fixed-times.png");
+            await Page.Navigation.PopAsync();
+            await Page.MacVerifySwapBoard();var fixedBoard=(ContentPage)Page.Navigation.NavigationStack.Last();
+            await Wait(()=>Views(fixedBoard.Content).OfType<Label>().Any(l=>l.AutomationId=="mac-board-cell"&&ToolTipProperties.GetText(l) is string tip&&tip.Contains("교체하지 않는 시간",StringComparison.Ordinal)));
+            Check(true,"Mac swap board shades the lessons in a time kept out of trades");
+            await Capture("mac-swap-board-fixed.png");
+            await Page.MacVerifyApi.Send("api/timetable/fixed-times",content:new StringContent("[]",Encoding.UTF8,"application/json"),method:HttpMethod.Put);
+            while(Page.Navigation.NavigationStack.Count>1)await Page.Navigation.PopAsync();
             await Page.MacVerifyApi.Send("api/admin/timetable-feature",content:Json(new JsonObject{["enabled"]=false}));
             await Wait(()=>!timetable.IsVisible&&Page.Navigation.NavigationStack.Count==1);
             Check(!timetable.IsVisible,"Disabling the timetable hides its sidebar item and closes the active timetable view");

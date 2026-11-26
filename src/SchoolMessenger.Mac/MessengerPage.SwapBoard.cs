@@ -106,7 +106,7 @@ public sealed partial class MessengerPage
         void Repaint(Label cell)
         {
             var (kind, bundle) = state.Paint[cell];
-            cell.BackgroundColor = kind switch { "option" => SwapOption, "overlapOption" => SwapTangle, "pick" => SwapPick, "overlap" => SwapOverlap, "changed" => ChangeTint, "blocked" => Subtle, _ => bundle ?? (kind == "mine" ? Pale : Surface) };
+            cell.BackgroundColor = kind switch { "option" => SwapOption, "overlapOption" => SwapTangle, "pick" => SwapPick, "overlap" => SwapOverlap, "changed" => ChangeTint, "blocked" => Subtle, "fixed" => Line, _ => bundle ?? (kind == "mine" ? Pale : Surface) };
         }
         void ClearPick() { state.Pick = null; state.Options = []; foreach (var cell in state.Paint.Keys) Repaint(cell); }
         async Task PickLesson(TimetablePlanSlot slot)
@@ -114,6 +114,8 @@ public sealed partial class MessengerPage
             ClearPick();
             if (!slot.Mine && !state.Manager && slot.BundleName is null) { status.Text = "내 수업만 옮길 수 있습니다. 내 수업은 파란색으로 표시됩니다."; return; }
             var what = $"{slot.Lesson.ClassName} {BoardDay(slot.Position.Date)} {slot.Position.Period}교시 {slot.Lesson.Subject}";
+            if (slot.Fixed && !state.Manager)
+            { status.Text = what + ": 시간표 담당자가 정한 ‘교체하지 않는 시간’(창의적 체험활동 등)이라 바꿀 수 없습니다. 꼭 바꿔야 하면 시간표 담당자에게 요청하세요."; return; }
             var away = !state.Dates.Contains(slot.Position.Date);
             var monday = DateTime.ParseExact(slot.Position.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture); monday = monday.AddDays(-((int)monday.DayOfWeek + 6) % 7);
             if (away && state.Plan?.SwapWeeks is { } allowed && Math.Abs((monday - state.Week).Days) / 7 > allowed)
@@ -235,7 +237,13 @@ public sealed partial class MessengerPage
                     var found = (await source.Send("api/timetable/swap-suggestions", new TimetableSuggestionRequest(dates, [], null, vacate))).Deserialize(MobileJson.Default.TimetableSuggestionArray)!;
                     var plan = (await source.Send("api/timetable/swap-plan", new TimetableSwapPlanRequest(dates, [], null))).Deserialize(MobileJson.Default.TimetableSwapPlan)!;
                     var lessons = plan.Slots.ToDictionary(s => s.Position, s => s.Lesson);
-                    if (found.Length == 0) { note.Text = what + "을(를) 비울 교체안을 이 주에서 찾지 못했습니다. 교시를 줄이거나, 표에서 직접 옮기거나, 관련 선생님과 상의해 보세요."; return; }
+                    if (found.Length == 0) { note.Text = what + "을(를) 비울 교체안이 교체할 수 있는 범위 안에 없습니다. 교시를 줄이거나, 표에서 직접 옮기거나, 관련 선생님과 상의해 보세요."; return; }
+                    // Ideas may reach into the weeks lessons trade across; their lessons are read a week at a time.
+                    foreach (var week in found.SelectMany(f => f.Exchanges).SelectMany(e => new[] { e.First.Date, e.Second.Date }).Where(d => !dates.Contains(d))
+                        .Select(d => { var t = DateTime.ParseExact(d, "yyyy-MM-dd", CultureInfo.InvariantCulture); return t.AddDays(-(((int)t.DayOfWeek + 6) % 7)); }).Distinct())
+                        foreach (var slot in (await source.Send("api/timetable/swap-plan", new TimetableSwapPlanRequest(Enumerable.Range(0, 5).Select(i => week.AddDays(i).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).ToArray(), [], null))).Deserialize(MobileJson.Default.TimetableSwapPlan)!.Slots)
+                            lessons[slot.Position] = slot.Lesson;
+                    bool Away(TimetableSuggestion idea) => idea.Exchanges.Any(e => !dates.Contains(e.First.Date) || !dates.Contains(e.Second.Date));
                     string Lesson(TimetablePosition p, Func<string, string> name) => lessons.TryGetValue(p, out var l) ? $"{p.Period}교시 {l.Subject}({name(l.TeacherName)})" : p.Period + "교시";
                     string Line(TimetableExchange e, Func<string, string> name) => $"{BoardDay(e.First.Date)} {(lessons.TryGetValue(e.First, out var l) ? BoardClass(l.ClassName) : "")} {Lesson(e.First, name)}  ↔  " +
                         (e.Second.Date == e.First.Date ? "" : BoardDay(e.Second.Date) + " ") + Lesson(e.Second, name);
@@ -265,7 +273,7 @@ public sealed partial class MessengerPage
                         var idea = found[order[rank]]; var lines = idea.Exchanges.Select(e => Line(e, n => n)).ToArray();
                         var card = new VerticalStackLayout { Spacing = 4 };
                         var top = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) } };
-                        var heading = Text($"교체안 {rank + 1} · {(idea.SameDay ? "같은 날" : "다른 날 포함")} · {idea.Exchanges.Length}쌍", 13, true); heading.VerticalOptions = LayoutOptions.Center; top.Add(heading);
+                        var heading = Text($"교체안 {rank + 1} · {(idea.SameDay ? "같은 날" : Away(idea) ? "다른 주 포함" : "다른 날 포함")} · {idea.Exchanges.Length}쌍", 13, true); heading.VerticalOptions = LayoutOptions.Center; top.Add(heading);
                         var use = DesktopButton("이 안으로 바꾸기", null, rank == 0); use.FontSize = 13; use.MinimumHeightRequest = 30; use.Padding = new Thickness(12, 2); use.AutomationId = "mac-helper-use"; top.Add(use, 1);
                         card.Add(top);
                         foreach (var line in lines) { var t = Text(line, 12); t.TextColor = Muted; card.Add(t); }
@@ -287,7 +295,7 @@ public sealed partial class MessengerPage
                                 if (state.Reason.Length == 0) state.Reason = what + " 비움 (교체 도우미)";
                                 if (Navigation.NavigationStack.LastOrDefault() == help) await Navigation.PopAsync();
                                 await Act(Load);
-                                status.Text = "교체안을 표에 반영했습니다. 바뀐 칸을 확인하고 ‘교체 신청 제출’을 누르세요." + (replaced > 0 ? " 표에서 바꾸던 내용은 지웠습니다." : "");
+                                status.Text = "교체안을 표에 반영했습니다. 바뀐 칸을 확인하고 ‘교체 신청 제출’을 누르세요." + (replaced > 0 ? " 표에서 바꾸던 내용은 지웠습니다." : "") + (Away(idea) ? " 다른 주 칸은 ‘›’로 넘겨 확인하세요." : "");
                             }
                             catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException or JsonException) { note.Text = error.Message; }
                         };
@@ -364,6 +372,7 @@ public sealed partial class MessengerPage
             Key("내 수업", Pale); Key("바꿀 수 있는 수업", SwapOption); Key("이번 신청으로 바뀐 칸", ChangeTint);
             // Shown only while the request has one, so the key still fits a small window.
             if (plan.Overlaps is { Length: > 0 }) { Key("겹친 수업", SwapOverlap); Key("바꾸면 겹침", SwapTangle); }
+            if (plan.Slots.Any(s => s.Fixed)) Key("교체하지 않는 시간", Line);
             var bundleKey = Text("◆ 묶음수업 · 같은 색은 같은 묶음", 12); bundleKey.TextColor = Muted; legend.Add(bundleKey);
             if (plan.Unavailable is { Length: > 0 }) { var markKey = Text("   ⊘·불가 수업 불가 표시", 12); markKey.TextColor = Muted; legend.Add(markKey); }
             under.Add(legend, 1);
@@ -432,11 +441,11 @@ public sealed partial class MessengerPage
                             cell.Text = (marked ? "⊘" : "") + BoardClass(first.Lesson.ClassName) + (lessons.Length > 1 ? "+" + (lessons.Length - 1) : "") + (first.BundleName is null ? "" : "◆");
                             cell.TextColor = first.Mine ? Blue : Navy; cell.FontAttributes = FontAttributes.Bold;
                             var bundle = lessons.FirstOrDefault(l => l.BundleName is not null)?.BundleName is { } b && state.Bundles.TryGetValue(b, out var tint) ? tint : (Color?)null;
-                            state.Paint[cell] = (lessons.Any(l => overlaps.Contains(l.Position)) ? "overlap" : lessons.Any(l => changed.Contains(l.Position)) ? "changed" : first.Mine ? "mine" : "lesson", bundle);
+                            state.Paint[cell] = (lessons.Any(l => overlaps.Contains(l.Position)) ? "overlap" : lessons.Any(l => changed.Contains(l.Position)) ? "changed" : first.Fixed ? "fixed" : first.Mine ? "mine" : "lesson", bundle);
                             Repaint(cell);
                             var tip = string.Join("\n", lessons.Select(l => $"{l.Lesson.ClassName} {l.Position.Period}교시 · {l.Lesson.Subject} ({l.Lesson.TeacherName})" +
                                 (l.BundleName is null ? "" : " · 묶음 " + l.BundleName) + (changed.Contains(l.Position) ? " · 이번 신청으로 바뀜" : "") + (waiting.Contains(l.Position) ? " · 대기 중인 신청 있음" : "") + (overlaps.Contains(l.Position) ? " · 같은 시간에 수업이 겹침" : ""))) +
-                                (marked ? "\n이 시간은 수업할 수 없다고 표시함" : "");
+                                (marked ? "\n이 시간은 수업할 수 없다고 표시함" : "") + (first.Fixed ? "\n교체하지 않는 시간 · 시간표 담당자만 바꿀 수 있습니다" : "");
                             ToolTipProperties.SetText(cell, tip); SemanticProperties.SetDescription(cell, $"{teacher.Name} {BoardDay(dates[d])} {p}교시 {first.Lesson.ClassName} {first.Lesson.Subject}");
                             cell.AutomationId = "mac-board-cell";
                             if (string.CompareOrdinal(dates[d], today) < 0) cell.Opacity = 0.45;
