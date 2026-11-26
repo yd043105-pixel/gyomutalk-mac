@@ -129,7 +129,8 @@ public sealed partial class MessengerPage
             var required=targets.Where(t=>!t.GetProperty("exempt").GetBoolean()).ToArray();var submitted=required.Count(t=>t.GetProperty("submittedAt").ValueKind!=JsonValueKind.Null);
             var summary=Text($"제출 {submitted}/{required.Length}명 · 미제출 {required.Length-submitted}명 · 면제 {targets.Length-required.Length}명",14,true);summary.AutomationId="mac-submission-summary";stack.Add(DesktopPanel(summary,12,Pale));
             var actions=new HorizontalStackLayout{Spacing=8};
-            actions.Add(DesktopButton("파일 일괄 다운로드 (ZIP)",()=>source.ShareDownload("api/submission-requests/"+id+"/zip","제출파일.zip",2L*1024*1024*1024),true));
+            var zip=DesktopButton("파일 일괄 다운로드 (ZIP)",()=>MacReceiveDownload(source,"api/submission-requests/"+id+"/zip","제출파일.zip",2L*1024*1024*1024),true);
+            MacFileMenu(zip,elsewhere=>MacReceiveDownload(source,"api/submission-requests/"+id+"/zip","제출파일.zip",2L*1024*1024*1024,elsewhere));actions.Add(zip);
             if(!closed)actions.Add(DesktopButton("요청 종료",async()=>{if(!await DisplayAlertAsync("제출 요청 종료","새 제출과 자동 알림을 종료할까요?","종료","취소"))return;await source.Send("api/submission-requests/"+id+"/close");await Reload();}));
             stack.Add(actions);
         }
@@ -153,7 +154,7 @@ public sealed partial class MessengerPage
             foreach(var file in target.GetProperty("files").EnumerateArray())
             {
                 var fileId=Field(file,"id")!;var fileName=Field(file,"name")??"";var expired=file.GetProperty("expired").GetBoolean();var description=fileName+" · "+FileSize(file.GetProperty("size").GetInt64())+(expired?" · 파일 만료":"");
-                var entry=DesktopButton(fileName+(expired?" (만료)":""),()=>source.ShareFile(fileId,fileName));entry.AutomationId="mac-submission-file";entry.FontSize=11;entry.MinimumHeightRequest=26;entry.Padding=new Thickness(6,3);entry.HorizontalOptions=LayoutOptions.Fill;entry.IsEnabled=!expired;
+                var entry=DesktopButton(fileName+(expired?" (만료)":""),()=>MacReceive(source,fileId,fileName));MacFileMenu(entry,elsewhere=>MacReceive(source,fileId,fileName,elsewhere));entry.AutomationId="mac-submission-file";entry.FontSize=11;entry.MinimumHeightRequest=26;entry.Padding=new Thickness(6,3);entry.HorizontalOptions=LayoutOptions.Fill;entry.IsEnabled=!expired;
                 ToolTipProperties.SetText(entry,description);SemanticProperties.SetDescription(entry,description);content.Add(entry);
             }
             var card=DesktopPanel(content,8,exempt?Subtle:done?SuccessTint:DangerTint);card.Stroke=exempt?Line:done?SuccessLine:DangerLine;card.MinimumHeightRequest=48;card.AutomationId="mac-submission-target";card.ClassId=state;

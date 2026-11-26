@@ -73,7 +73,9 @@ public sealed partial class MessengerPage
             foreach (var swap in requests)
             {
                 var panel = new VerticalStackLayout { Spacing = 4 };
-                panel.Add(Text($"{swap.OwnerName} · {MacScheduleStatus(swap.Status)}", 14, true));
+                // A trade between weeks moves a lesson of one week into another: worth a look before approving.
+                var across = swap.Changes.Select(c => DateTime.ParseExact(c.Position.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture)).Select(d => d.AddDays(-((int)d.DayOfWeek + 6) % 7)).Distinct().Count() > 1;
+                panel.Add(Text($"{swap.OwnerName} · {MacScheduleStatus(swap.Status)}" + (across ? " · 다른 주와 교체" : ""), 14, true));
                 if (manager && swap.Status == "pending")
                 {
                     var check = new CheckBox();
@@ -101,6 +103,24 @@ public sealed partial class MessengerPage
             if (requests.Length == 0) rows.Add(Text("아직 교체 신청이 없습니다.", 13));
         }
         ui.Add("새로 고침", Reload);
+        // How far apart traded lessons may be, for the whole school. A server without the setting shows no choice.
+        if (manager && setup.TryGetProperty("swapWeeks", out var range) && range.ValueKind == JsonValueKind.Number)
+        {
+            (int Weeks, string Label)[] choices = [(0, "같은 주만"), (1, "다음 주까지"), (2, "2주 뒤까지"), (3, "3주 뒤까지"), (4, "4주 뒤까지")];
+            var weeks = new Picker { Title = "교체할 수 있는 범위", ItemsSource = choices.Select(c => c.Label).ToList(), SelectedIndex = Array.FindIndex(choices, c => c.Weeks == range.GetInt32()), WidthRequest = 160, AutomationId = "mac-swap-range" };
+            var label = Text("교체할 수 있는 범위", 13); label.VerticalOptions = LayoutOptions.Center;
+            weeks.SelectedIndexChanged += async (_, _) =>
+            {
+                if (weeks.SelectedIndex < 0 || !MacScheduleActive(source)) return;
+                try
+                {
+                    await MacSend(source, "api/timetable/swap-range", new System.Text.Json.Nodes.JsonObject { ["weeks"] = choices[weeks.SelectedIndex].Weeks }, HttpMethod.Put);
+                    ui.Status.Text = $"이제 선생님들이 {choices[weeks.SelectedIndex].Label} 수업을 바꿀 수 있습니다.";
+                }
+                catch (Exception error) when (error is InvalidOperationException or HttpRequestException or TaskCanceledException) { ui.Status.Text = error.Message; }
+            };
+            ui.Body.Add(new HorizontalStackLayout { Spacing = 10, Children = { label, weeks } });
+        }
         if (manager)
         {
             // The board already checked every rule, so a request can be approved and published without a NEIS file.

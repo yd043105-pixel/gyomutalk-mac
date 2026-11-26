@@ -7,6 +7,9 @@
   <!-- ChatGPT sign-in returns to a 127.0.0.1 loopback page, as on Windows; nothing listens beyond this Mac. -->
   <key>com.apple.security.network.server</key><true/>
   <key>com.apple.security.files.user-selected.read-write</key><true/>
+  <!-- Received files go to 문서/GyomutalkFiles, as on Windows; only that folder of the home is opened. -->
+  <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+  <array><string>/Documents/GyomutalkFiles/</string></array>
   <!-- The .NET runtime JIT needs MAP_JIT under the hardened runtime. -->
   <key>com.apple.security.cs.allow-jit</key><true/>
   <!-- Sparkle's sandboxed installer and status services. -->

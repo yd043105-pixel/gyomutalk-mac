@@ -203,7 +203,7 @@ public sealed partial class MessengerPage
             foreach(var file in entry.GetProperty("attachments").EnumerateArray())
             {
                 var fileId=RowId(file);var fileName=Field(file,"name")??"";var expired=Flag(file,"expired");
-                var get=DesktopButton(fileName+(expired?" · 기간 만료":" · 저장/공유"),()=>source.ShareFile(fileId,fileName));get.FontSize=12;get.MinimumHeightRequest=28;get.Padding=new Thickness(10,2);get.IsEnabled=!expired;get.HorizontalOptions=LayoutOptions.Start;
+                var get=DesktopButton(fileName+(expired?" · 기간 만료":" · 받기"),()=>MacReceive(source,fileId,fileName));MacFileMenu(get,elsewhere=>MacReceive(source,fileId,fileName,elsewhere));get.FontSize=12;get.MinimumHeightRequest=28;get.Padding=new Thickness(10,2);get.IsEnabled=!expired;get.HorizontalOptions=LayoutOptions.Start;
                 content.Add(get);
             }
             var bubble=new Border{Content=content,Padding=new Thickness(14,10),BackgroundColor=mine?Blue:Canvas,StrokeThickness=0,

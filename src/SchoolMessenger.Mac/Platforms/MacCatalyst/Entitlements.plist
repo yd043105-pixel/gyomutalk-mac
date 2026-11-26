@@ -7,6 +7,9 @@
   <key>com.apple.security.network.server</key><true/>
   <key>com.apple.security.print</key><true/>
   <key>com.apple.security.files.user-selected.read-write</key><true/>
+  <!-- Received files go to 문서/GyomutalkFiles, as on Windows; only that folder of the home is opened. -->
+  <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+  <array><string>/Documents/GyomutalkFiles/</string></array>
   <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
   <array><string>kr.school.kyomutalk.mac-spks</string><string>kr.school.kyomutalk.mac-spki</string></array>
 </dict></plist>

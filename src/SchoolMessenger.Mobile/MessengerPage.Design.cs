@@ -71,10 +71,8 @@ public sealed partial class MessengerPage
         System.Action clearSchoolLoginFields=()=>{};var shownAddress=address.Text??"";
         mode.SelectedIndexChanged+=(_,_)=>{shownAddress=Preferences.Default.Get("address-"+mode.SelectedIndex,"");address.Text=shownAddress;help.Text=mode.SelectedIndex==1?"교직원 업무 메시지는 교내망 또는\n학교 VPN에 연결한 뒤 확인하세요.":"교직원 메시지와 학교 업무를 확인하세요.";};
         var username=Input("이름");username.Keyboard=Keyboard.Text;var password=Input("비밀번호",true);
+        // On from the first start, as on Windows: the sign-in stays in this Mac's keychain until 로그아웃.
         var remember=new Switch{IsToggled=true};var rememberRow=new Grid{ColumnDefinitions={new(GridLength.Star),new(GridLength.Auto)}};
-#if MACCATALYST
-        remember.IsToggled=false;
-#endif
         var rememberLabel=Text("자동 로그인",13);rememberLabel.VerticalOptions=LayoutOptions.Center;rememberRow.Add(rememberLabel);rememberRow.Add(remember,1);body.Add(rememberRow);
         SemanticProperties.SetDescription(remember,"자동 로그인. 비밀번호는 저장하지 않습니다.");
         clearSchoolLoginFields=()=>{password.Text="";remember.IsToggled=false;};

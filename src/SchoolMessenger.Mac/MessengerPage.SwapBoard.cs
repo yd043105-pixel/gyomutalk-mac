@@ -54,6 +54,9 @@ public sealed partial class MessengerPage
         public readonly List<(TimetableSwapOption Option, string Label)> Moves = [];
         public TimetableSwapPlan? Plan;
         public TimetablePlanSlot? Pick;
+        // A lesson picked in one week and carried to another with ‹ ›, to trade with a lesson there (as on Windows).
+        public TimetablePlanSlot? Carry;
+        public Button? CarryChip;
         public Dictionary<TimetablePosition, TimetableSwapOption> Options = [];
         public readonly Dictionary<TimetablePosition, Label> Cells = [];
         public readonly Dictionary<Label, (string Kind, Color? Bundle)> Paint = [];
@@ -89,6 +92,16 @@ public sealed partial class MessengerPage
             if (!MacScheduleActive(source)) return;
             state.Pick = null; state.Options = []; state.Cells.Clear(); state.Paint.Clear();
             host.Content = Arrange(pending);
+            // Coming back to the week of the carried lesson picks it there as usual; in another week it offers that week's lessons.
+            if (state.Carry is { } carry)
+            {
+                if (!state.Dates.Contains(carry.Position.Date)) await PickLesson(carry);
+                else
+                {
+                    state.Carry = null;
+                    if (state.Plan.Slots.FirstOrDefault(s => s.Position == carry.Position) is { } here) await PickLesson(here);
+                }
+            }
         }
         void Repaint(Label cell)
         {
@@ -100,6 +113,11 @@ public sealed partial class MessengerPage
         {
             ClearPick();
             if (!slot.Mine && !state.Manager && slot.BundleName is null) { status.Text = "내 수업만 옮길 수 있습니다. 내 수업은 파란색으로 표시됩니다."; return; }
+            var what = $"{slot.Lesson.ClassName} {BoardDay(slot.Position.Date)} {slot.Position.Period}교시 {slot.Lesson.Subject}";
+            var away = !state.Dates.Contains(slot.Position.Date);
+            var monday = DateTime.ParseExact(slot.Position.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture); monday = monday.AddDays(-((int)monday.DayOfWeek + 6) % 7);
+            if (away && state.Plan?.SwapWeeks is { } allowed && Math.Abs((monday - state.Week).Days) / 7 > allowed)
+            { status.Text = what + (allowed == 0 ? ": 이 학교는 같은 주의 수업끼리만 바꿀 수 있습니다." : $": 이 학교는 {allowed}주 안의 수업끼리만 바꿀 수 있습니다. ‹ ›로 가까운 주로 돌아가세요."); return; }
             var options = (await source.Send("api/timetable/swap-options", new TimetableSwapOptionsRequest(state.Dates, state.Dependencies, state.Exchanges, slot.Position, true)))
                 .Deserialize(MobileJson.Default.TimetableSwapOptionArray)!;
             if (!MacScheduleActive(source)) return;
@@ -108,22 +126,25 @@ public sealed partial class MessengerPage
             foreach (var option in options) if (state.Cells.TryGetValue(option.Target, out var cell)) cell.BackgroundColor = option.Overlap ? SwapTangle : SwapOption;
             var hidden = options.Count(o => !state.Cells.ContainsKey(o.Target));
             var clean = options.Count(o => !o.Overlap && state.Cells.ContainsKey(o.Target)); var tangled = options.Length - hidden - clean;
-            var what = $"{slot.Lesson.ClassName} {BoardDay(slot.Position.Date)} {slot.Position.Period}교시 {slot.Lesson.Subject}";
+            var further = !away && state.Plan?.SwapWeeks is > 0 ? " 다음 주 수업과 바꾸려면 이 수업을 고른 채 ‘›’를 누르세요." : "";
             status.Text = options.Length == 0
-                ? what + ": 이번 주에는 바꿀 수 있는 수업이 없습니다. 지난 수업이거나 수업 불가로 표시된 시간입니다. 다른 주를 확인하거나 ‘교체 도우미’를 써 보세요."
+                ? what + (away ? ": 이 주에는 바꿀 수 있는 수업이 없습니다. 지난 수업이거나 수업 불가로 표시된 시간입니다. 다른 주로 넘기거나 ✕로 고른 수업을 놓으세요."
+                    : ": 이번 주에는 바꿀 수 있는 수업이 없습니다. 지난 수업이거나 수업 불가로 표시된 시간입니다." + (further.Length > 0 ? further : " 다른 주를 확인하거나 ‘교체 도우미’를 써 보세요."))
                 : what + (clean > 0 ? $": 초록색 {clean}칸과 바로 바꿀 수 있습니다." : ":") + (tangled > 0 ? $" 주황 {tangled}칸은 바꾸면 수업이 겹쳐 하나를 더 옮겨야 합니다." : "") +
-                  (hidden > 0 ? $" ‘모든 선생님 보기’를 켜면 {hidden}칸이 더 보입니다." : "");
+                  (hidden > 0 ? $" ‘모든 선생님 보기’를 켜면 {hidden}칸이 더 보입니다." : "") + further;
         }
         async Task Apply(TimetableSwapOption option)
         {
             if ((state.Exchanges?.Length ?? 0) + option.Exchanges.Length > 12)
                 throw new InvalidOperationException("한 번에 신청할 수 있는 교체는 12쌍까지입니다. 지금까지 바꾼 내용을 먼저 신청하세요.");
             var slots = state.Plan!.Slots.ToDictionary(s => s.Position, s => s.Lesson);
+            // A lesson carried from another week is not on this board but names the trade all the same.
+            if (state.Pick is { } picked) slots.TryAdd(picked.Position, picked.Lesson);
             string Lesson(TimetablePosition p) => slots.TryGetValue(p, out var l) ? $"{p.Period}교시 {l.Subject}({l.TeacherName})" : p.Period + "교시";
             string Line(TimetableExchange e) => $"{BoardDay(e.First.Date)} {(slots.TryGetValue(e.First, out var l) ? l.ClassName : "")} {Lesson(e.First)}  ↔  " +
                 (e.Second.Date == e.First.Date ? "" : BoardDay(e.Second.Date) + " ") + Lesson(e.Second);
             state.Moves.Add((option, string.Join("\n", option.Exchanges.Select((e, i) => (i == 0 ? "" : "함께 이동(묶음) · ") + Line(e)))));
-            state.RequestId = null;
+            state.RequestId = null; state.Carry = null;
             await Load();
             status.Text = Tangle() is { } tangle ? "수업을 맞바꿨습니다. " + tangle
                 : option.Exchanges.Length > 1 ? $"수업을 맞바꿨습니다. 묶음수업 {option.Exchanges.Length}개 학급이 함께 움직였습니다." : "수업을 맞바꿨습니다. 아래 ‘변경 기록’을 확인한 뒤 신청하세요.";
@@ -157,6 +178,8 @@ public sealed partial class MessengerPage
             if (state.Busy) return;
             if (state.Pick is not null && lessons.Select(l => l.Position).FirstOrDefault(state.Options.ContainsKey) is { } target)
             { var option = state.Options[target]; _ = Act(() => Apply(option)); return; }
+            // Picking anything on this week's board lets go of a lesson carried from another week.
+            if (state.Carry is not null) { state.Carry = null; if (state.CarryChip is { } chip) chip.IsVisible = false; }
             if (lessons.Length == 0) { ClearPick(); status.Text = ""; return; }
             var slot = lessons.FirstOrDefault(l => l.Mine) ?? lessons[0];
             if (state.Pick?.Position == slot.Position) return;
@@ -287,7 +310,7 @@ public sealed partial class MessengerPage
             {
                 var button = new Button { Text = label, FontSize = 18, WidthRequest = 34, MinimumHeightRequest = 30, Padding = 0, BackgroundColor = Colors.Transparent, BorderWidth = 0, TextColor = Blue };
                 SemanticProperties.SetDescription(button, name); ToolTipProperties.SetText(button, name);
-                button.Clicked += async (_, _) => await Act(async () => { state.Week = state.Week.AddDays(days); await Load(); });
+                button.Clicked += async (_, _) => await Act(async () => { state.Carry = state.Pick ?? state.Carry; state.Week = state.Week.AddDays(days); await Load(); });
                 return button;
             }
             var week = Text(state.Week.ToString("M.d", CultureInfo.InvariantCulture) + " ~ " + state.Week.AddDays(4).ToString("M.d", CultureInfo.InvariantCulture), 14, true); week.VerticalOptions = LayoutOptions.Center;
@@ -316,11 +339,21 @@ public sealed partial class MessengerPage
                 ToolTipProperties.SetText(helper, "비울 시간을 알려 주면 규칙에 맞는 교체안을 찾아 줍니다.");
                 helper.Clicked += async (_, _) => await Act(Helper); head.Add(helper);
             }
+            state.CarryChip = null;
+            if (state.Carry is { } carried && !state.Dates.Contains(carried.Position.Date))
+            {
+                var chip = new Button { Text = $"옮길 수업 · {BoardDay(carried.Position.Date)} {BoardClass(carried.Lesson.ClassName)} {carried.Position.Period}교시 {carried.Lesson.Subject}   ✕", AutomationId = "mac-board-carry",
+                    FontSize = 13, MinimumHeightRequest = 30, Padding = new Thickness(10, 2), Margin = new Thickness(12, 0, 0, 0), BackgroundColor = Colors.Transparent, BorderWidth = 0, TextColor = Blue };
+                ToolTipProperties.SetText(chip, "다른 주에서 고른 수업입니다. 누르면 고른 수업을 놓습니다.");
+                chip.Clicked += (_, _) => { state.Carry = null; ClearPick(); chip.IsVisible = false; status.Text = ""; };
+                head.Add(chip); state.CarryChip = chip;
+            }
             root.Add(head, 0, 0);
 
             // How to use it, or what just happened, and the colour key on the right.
             var under = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) }, ColumnSpacing = 12 };
-            if (status.Text.Length == 0) status.Text = "옮길 수업을 누르면 바꿀 수 있는 수업이 초록색으로 표시됩니다. 초록 칸을 누르면 두 수업이 맞바뀝니다.";
+            if (status.Text.Length == 0) status.Text = "옮길 수업을 누르면 바꿀 수 있는 수업이 초록색으로 표시됩니다. 초록 칸을 누르면 두 수업이 맞바뀝니다." +
+                (plan.SwapWeeks is > 0 ? " 다른 주 수업과 바꾸려면 수업을 고른 채 ‹ ›로 주를 넘기세요." : "");
             (status.Parent as Layout)?.Remove(status); under.Add(status);
             var legend = new HorizontalStackLayout { Spacing = 4, VerticalOptions = LayoutOptions.Start };
             void Key(string label, Color color)
@@ -481,6 +514,18 @@ public sealed partial class MessengerPage
             return panel;
         }
 
+#if MAC_VERIFY && DEBUG
+        // The runtime check carries a lesson to the next week the way a teacher does with ›.
+        macVerifyCarry = async () =>
+        {
+            var today = MacScheduleDate(DateTime.UtcNow.AddHours(9).Date);
+            bool Ahead(TimetablePlanSlot s) => string.CompareOrdinal(s.Position.Date, today) > 0;
+            if (!state.Plan!.Slots.Any(Ahead)) { state.Week = state.Week.AddDays(7); await Load(); }
+            var slot = state.Plan!.Slots.Where(Ahead).OrderBy(s => s.Position.Date).ThenBy(s => s.Position.Period).First();
+            await PickLesson(slot); state.Carry = state.Pick ?? state.Carry; state.Week = state.Week.AddDays(7); await Load();
+            return (state.Options.Count, state.CarryChip?.IsVisible == true, status.Text);
+        };
+#endif
         await Act(Load);
         if (!MacScheduleActive(source)) return;
         await Navigation.PushAsync(page);

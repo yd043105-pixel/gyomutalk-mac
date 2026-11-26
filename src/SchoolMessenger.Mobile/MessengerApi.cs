@@ -177,6 +177,22 @@ public sealed class MessengerApi : IDisposable
         await AttachmentDownload.Save(transfers,"api/attachments/"+id+"/download",Session.GetProperty("user").GetProperty("id").GetString()!,path,Check,progress,cancellation);
         await Share.Default.RequestAsync(new ShareFileRequest("첨부 저장·공유",new ShareFile(path)));
     }
+    // Downloads an attachment to the given path, resuming a paused download of the same file to the same place.
+    public async Task SaveFile(string id,string path,Action<AttachmentProgress>? progress=null,CancellationToken cancellation=default)
+    {
+        if(!Guid.TryParseExact(id,"N",out _))throw new InvalidOperationException("첨부파일 번호를 확인하세요.");
+        await AttachmentDownload.Save(transfers,"api/attachments/"+id+"/download",Session.GetProperty("user").GetProperty("id").GetString()!,path,Check,progress,cancellation);
+    }
+    // A private place for a file that is then copied wherever the teacher chooses.
+    public string TemporaryPath(string id,string name){var folder=ShareFolder();Directory.CreateDirectory(folder);return Path.Combine(folder,id+"-"+Path.GetFileName(name));}
+    public async Task SaveDownload(string route,string path,long limit)
+    {
+        using var response=await http.GetAsync(route,HttpCompletionOption.ResponseHeadersRead);await Check(response);
+        if(response.Content.Headers.ContentLength>limit)throw new InvalidOperationException("파일이 너무 큽니다.");
+        var temporary=path+"."+Guid.NewGuid().ToString("N")+".part";
+        try{await using(var output=File.Create(temporary))await response.Content.CopyToAsync(output);File.Move(temporary,path,true);}
+        finally{if(File.Exists(temporary))File.Delete(temporary);}
+    }
     public async Task ShareDownload(string route,string name,long limit)
     {
         using var response=await http.GetAsync(route,HttpCompletionOption.ResponseHeadersRead);await Check(response);

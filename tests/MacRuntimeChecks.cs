@@ -27,6 +27,7 @@ public sealed partial class MessengerPage
     internal bool MacVerifyConnected=>desktopHub?.State==Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
     internal Task<bool> MacVerifyTimetable()=>Timetable();
     internal Task MacVerifySwapBoard()=>MacSwapBoard(api!,DateTime.UtcNow.AddHours(9).Date,true);
+    internal Func<Task<(int Options,bool Chip,string Status)>>? macVerifyCarry;
     internal Task MacVerifyBundles()=>MacBundleEditor(api!);
     internal Task MacVerifyCompose()=>MacCompose();
     internal Task MacVerifyPeople()=>MacPeople();
@@ -189,6 +190,9 @@ internal static class MacRuntimeChecks
                 "Mac swap board shows every teacher's week and paints each of the three bundles in its own colour, in the order of their names");
             Check(Views(boardPage.Content).OfType<Button>().Any(button=>button.AutomationId=="mac-board-submit"&&!button.IsEnabled),"The request button waits until a lesson has been moved");
             await Capture("mac-swap-board.png");
+            var carried=await Page.macVerifyCarry!();
+            Check(carried.Chip&&carried.Options>0,"Mac swap board carries a picked lesson to the next week and lights that week's lessons it can trade with");
+            await Capture("mac-swap-board-next-week.png");
             await Page.Navigation.PopAsync();
             // A period marked as impossible shows on the board, and the helper answers for one of the teacher's periods.
             var korea=DateTime.UtcNow.AddHours(9).Date;var monday=korea.AddDays(-(((int)korea.DayOfWeek+6)%7));
@@ -277,6 +281,15 @@ internal static class MacRuntimeChecks
             var file=Views(cards.Single(c=>c.ClassId=="제출 완료")).OfType<Button>().Single(b=>b.AutomationId=="mac-submission-file");
             Check(file.LineBreakMode==LineBreakMode.TailTruncation&&file.Width<=cards[0].Width&&ToolTipProperties.GetText(file)?.ToString()?.Contains("최종검토완료본")==true,"Long submitted filenames are truncated while the full name stays in the tooltip");
             await Capture("mac-submissions.png");
+            // A click saves the file into 문서/GyomutalkFiles of the real home, not the app's own container, without asking.
+            var receivedPath=Path.Combine(MacFiles.Folder,"2026학년도_부서별_운영계획서_교육과정_평가계획_세부운영내용_최종검토완료본_제출자료.txt");if(File.Exists(receivedPath))File.Delete(receivedPath);
+            ((IButtonController)file).SendClicked();
+            for(var i=0;i<100&&!File.Exists(receivedPath);i++)await Task.Delay(100);
+            Check(File.Exists(receivedPath)&&File.ReadAllText(receivedPath)=="synthetic-submission"&&MacFiles.Folder.EndsWith("/Documents/GyomutalkFiles",StringComparison.Ordinal)&&!MacFiles.Folder.Contains("/Library/Containers/",StringComparison.Ordinal),
+                "A clicked file lands in 문서/GyomutalkFiles of the real home without asking ("+MacFiles.Folder+")");
+            File.Delete(receivedPath);
+            Check(FlyoutBase.GetContextFlyout(file) is MenuFlyout fileMenu&&fileMenu.OfType<MenuFlyoutItem>().First().Text.Contains(MacFiles.Folder,StringComparison.Ordinal)&&fileMenu.OfType<MenuFlyoutItem>().Any(i=>i.Text.StartsWith("다른 이름으로 저장",StringComparison.Ordinal)),
+                "Right-click on a received file offers the folder with its path and 다른 이름으로 저장");
             await admin.Send("api/submission-requests/"+requestId+"/targets/"+staff[1],content:Json(new JsonObject{["exempt"]=true}),method:HttpMethod.Patch);
             await Page.MacVerifyWork("submission-requests",requestId);
             Check(Page.MacVerifySubmissionTargets!.Children.OfType<Border>().Count(c=>c.ClassId=="면제")==1,"Exemption saved with PATCH is reflected in the recipient card state");
